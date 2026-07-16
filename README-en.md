@@ -68,19 +68,42 @@ This project is just my personal learning and development and maintenance. I do 
 
 ## Software Installation
 
-### 1-Click installation
+### One-line installation
 
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh)
 ```
-wget -N https://raw.githubusercontent.com/XrayR-project/XrayR-release/master/install.sh && bash install.sh
+
+Or:
+
+```bash
+wget -N https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh && bash install.sh
+```
+
+After install:
+- Config file: `/etc/XrayR/config.yml`
+- Manage service: run `XrayR`, or `XrayR start|stop|restart|log|status`
+- If no GitHub Release exists yet, the script builds from source automatically
+
+Install a specific version (requires a published Release):
+
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh) v0.9.5
 ```
 
 ### Docker
 
-[Docker deployment tutorial](https://xrayr-project.github.io/XrayR-doc/xrayr-xia-zai-he-an-zhuang/install/docker)
+```bash
+docker build -t xrayr .
+docker run -d --name xrayr --network host -v /etc/XrayR:/etc/XrayR xrayr
+```
 
 ### Manual installation
 
-[Manual installation tutorial](https://xrayr-project.github.io/XrayR-doc/xrayr-xia-zai-he-an-zhuang/install/manual)
+1. Install Go (>= 1.24)
+2. `git clone https://github.com/Dzone-source/xrayr.git && cd xrayr`
+3. `CGO_ENABLED=0 go build -o XrayR -trimpath -ldflags "-s -w -buildid="`
+4. Copy the binary and files under `release/config/` to the server, then run with `--config /etc/XrayR/config.yml`
 
 ## Configuration file and detailed use tutorial
 

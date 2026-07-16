@@ -69,17 +69,40 @@ A Xray backend framework that can easily support many panels.
 
 ### 一键安装
 
-```
-wget -N https://raw.githubusercontent.com/XrayR-project/XrayR-release/master/install.sh && bash install.sh
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh)
 ```
 
-### 使用Docker部署软件
+或：
 
-[Docker部署教程](https://xrayr-project.github.io/XrayR-doc/xrayr-xia-zai-he-an-zhuang/install/docker)
+```bash
+wget -N https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh && bash install.sh
+```
+
+安装完成后：
+- 配置文件：`/etc/XrayR/config.yml`
+- 管理命令：输入 `XrayR`，或使用 `XrayR start|stop|restart|log|status`
+- 若暂无 GitHub Release，脚本会自动从源码编译安装
+
+指定版本安装（需已发布 Release）：
+
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh) v0.9.5
+```
+
+### Docker 部署
+
+```bash
+docker build -t xrayr .
+docker run -d --name xrayr --network host -v /etc/XrayR:/etc/XrayR xrayr
+```
 
 ### 手动安装
 
-[手动安装教程](https://xrayr-project.github.io/XrayR-doc/xrayr-xia-zai-he-an-zhuang/install/manual)
+1. 安装 Go (>= 1.24)
+2. `git clone https://github.com/Dzone-source/xrayr.git && cd xrayr`
+3. `CGO_ENABLED=0 go build -o XrayR -trimpath -ldflags "-s -w -buildid="`
+4. 将二进制与 `release/config/` 配置放到服务器，使用 `--config /etc/XrayR/config.yml` 运行
 
 ## 配置文件及详细使用教程
 
