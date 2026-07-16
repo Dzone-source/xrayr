@@ -70,24 +70,23 @@ A Xray backend framework that can easily support many panels.
 ### 一键安装
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh)
+bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh)
 ```
 
 或：
 
 ```bash
-wget -N https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh && bash install.sh
+wget -N https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh && bash install.sh
 ```
 
 安装完成后：
 - 配置文件：`/etc/XrayR/config.yml`
 - 管理命令：输入 `XrayR`，或使用 `XrayR start|stop|restart|log|status`
-- 若暂无 GitHub Release，脚本会自动从源码编译安装
 
-指定版本安装（需已发布 Release）：
+指定版本安装：
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh) v0.9.5
+bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh) v0.9.5
 ```
 
 ### Docker 部署

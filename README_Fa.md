@@ -66,13 +66,13 @@
 ### نصب با یک دستور
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh)
+bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh)
 ```
 
 یا:
 
 ```bash
-wget -N https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh && bash install.sh
+wget -N https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh && bash install.sh
 ```
 
 پس از نصب:

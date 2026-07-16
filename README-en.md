@@ -71,24 +71,23 @@ This project is just my personal learning and development and maintenance. I do 
 ### One-line installation
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh)
+bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh)
 ```
 
 Or:
 
 ```bash
-wget -N https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh && bash install.sh
+wget -N https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh && bash install.sh
 ```
 
 After install:
 - Config file: `/etc/XrayR/config.yml`
 - Manage service: run `XrayR`, or `XrayR start|stop|restart|log|status`
-- If no GitHub Release exists yet, the script builds from source automatically
 
-Install a specific version (requires a published Release):
+Install a specific version:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh) v0.9.5
+bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh) v0.9.5
 ```
 
 ### Docker

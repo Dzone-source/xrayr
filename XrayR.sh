@@ -11,7 +11,7 @@ plain='\033[0m'
 
 REPO="Dzone-source/xrayr"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
-INSTALL_SCRIPT_URL="${RAW_BASE}/install.sh"
+INSTALL_SCRIPT_URL="https://github.com/${REPO}/releases/latest/download/install.sh"
 
 [[ $EUID -ne 0 ]] && echo -e "${red}Lỗi:${plain} phải chạy bằng root.\n" && exit 1
 
@@ -290,7 +290,9 @@ install_bbr() {
 }
 
 update_shell() {
-    wget -O /usr/bin/XrayR -N --no-check-certificate "${RAW_BASE}/XrayR.sh"
+    local url="https://github.com/${REPO}/releases/latest/download/XrayR.sh"
+    wget -O /usr/bin/XrayR -N --no-check-certificate "${url}" \
+        || wget -O /usr/bin/XrayR -N --no-check-certificate "${RAW_BASE}/XrayR.sh"
     if [[ $? -ne 0 ]]; then
         echo ""
         echo -e "${red}Tải script thất bại, kiểm tra kết nối GitHub.${plain}"

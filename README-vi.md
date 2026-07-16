@@ -68,24 +68,23 @@ Dự án này chỉ là học tập và phát triển và bảo trì cá nhân c
 ### Cài đặt một lệnh
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh)
+bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh)
 ```
 
 Hoặc:
 
 ```bash
-wget -N https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh && bash install.sh
+wget -N https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh && bash install.sh
 ```
 
 Sau khi cài xong:
 - Sửa cấu hình: `/etc/XrayR/config.yml`
 - Quản lý dịch vụ: gõ `XrayR` (menu) hoặc `XrayR start|stop|restart|log|status`
-- Nếu chưa có GitHub Release, script sẽ tự biên dịch từ source
 
-Cài phiên bản cụ thể (khi đã có release):
+Cài phiên bản cụ thể:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh) v0.9.5
+bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh) v0.9.5
 ```
 
 ### Triển khai bằng Docker

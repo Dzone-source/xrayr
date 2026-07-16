@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 #
 # XrayR one-click installer
-# Usage:
+# Usage (khuyến nghị, dùng Release):
+#   bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh)
+#
+# Hoặc từ nhánh main (sau khi merge):
 #   bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh)
-#   bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/main/install.sh) v0.9.5
 #
 
 set -euo pipefail
@@ -14,11 +16,11 @@ yellow='\033[0;33m'
 plain='\033[0m'
 
 REPO="Dzone-source/xrayr"
-RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
 GITHUB_BASE="https://github.com/${REPO}"
+RAW_MAIN="https://raw.githubusercontent.com/${REPO}/main"
 INSTALL_DIR="/usr/local/XrayR"
 CONFIG_DIR="/etc/XrayR"
-GO_MIN_VERSION="1.24"
+GO_VERSION="1.24.1"
 TMP_DIR=""
 
 cur_dir=$(pwd)
@@ -104,11 +106,11 @@ install_base() {
     echo -e "${green}Cài đặt phụ thuộc cơ bản...${plain}"
     if [[ "${release}" == "centos" ]]; then
         yum install epel-release -y
-        yum install wget curl unzip tar git ca-certificates socat cronie -y
+        yum install wget curl unzip tar ca-certificates socat cronie -y
     else
         export DEBIAN_FRONTEND=noninteractive
         apt-get update -y
-        apt-get install -y wget curl unzip tar git ca-certificates socat cron
+        apt-get install -y wget curl unzip tar ca-certificates socat cron
     fi
 }
 
@@ -125,38 +127,27 @@ check_status() {
     return 1
 }
 
-version_ge() {
-    # return 0 if $1 >= $2
-    printf '%s\n%s\n' "$2" "$1" | sort -V -C
+download_file() {
+    local url=$1
+    local dest=$2
+    if command -v curl >/dev/null 2>&1; then
+        curl -fL --retry 3 --retry-delay 2 -o "${dest}" "${url}"
+    else
+        wget -q -N --no-check-certificate -O "${dest}" "${url}"
+    fi
 }
 
-ensure_go() {
-    if command -v go >/dev/null 2>&1; then
-        local current
-        current=$(go version | awk '{print $3}' | sed 's/go//')
-        if version_ge "${current}" "${GO_MIN_VERSION}"; then
-            echo -e "Go đã có sẵn: ${green}${current}${plain}"
-            return 0
-        fi
-        echo -e "${yellow}Go ${current} quá cũ, cần >= ${GO_MIN_VERSION}${plain}"
-    fi
-
-    echo -e "${green}Cài đặt Go ${GO_MIN_VERSION}...${plain}"
-    local go_tarball="go${GO_MIN_VERSION}.linux-${go_arch}.tar.gz"
-    local go_url="https://go.dev/dl/${go_tarball}"
-    wget -q -O "/tmp/${go_tarball}" "${go_url}" || {
-        echo -e "${red}Không tải được Go từ ${go_url}${plain}"
-        exit 1
-    }
-    rm -rf /usr/local/go
-    tar -C /usr/local -xzf "/tmp/${go_tarball}"
-    rm -f "/tmp/${go_tarball}"
-    export PATH="/usr/local/go/bin:${PATH}"
-    echo -e "Go đã cài: ${green}$(go version)${plain}"
+is_probably_zip() {
+    local f=$1
+    [[ -s "${f}" ]] || return 1
+    # ZIP magic: PK
+    local magic
+    magic=$(head -c 2 "${f}" | tr -d '\0' || true)
+    [[ "${magic}" == "PK" ]]
 }
 
 get_latest_version() {
-    curl -Ls "https://api.github.com/repos/${REPO}/releases/latest" \
+    curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
         | grep '"tag_name":' \
         | sed -E 's/.*"([^"]+)".*/\1/' \
         | head -n 1
@@ -168,66 +159,34 @@ download_release() {
     local url="${GITHUB_BASE}/releases/download/${version}/${zip_name}"
 
     echo -e "Tải release ${green}${version}${plain}: ${url}"
-    if ! wget -q -N --no-check-certificate -O "${INSTALL_DIR}/XrayR-linux.zip" "${url}"; then
+    if ! download_file "${url}" "${INSTALL_DIR}/XrayR-linux.zip"; then
         return 1
     fi
-    if [[ ! -s "${INSTALL_DIR}/XrayR-linux.zip" ]]; then
-        return 1
-    fi
-    # GitHub returns JSON error body when asset is missing
-    if head -c 1 "${INSTALL_DIR}/XrayR-linux.zip" | grep -q '{'; then
+    if ! is_probably_zip "${INSTALL_DIR}/XrayR-linux.zip"; then
+        rm -f "${INSTALL_DIR}/XrayR-linux.zip"
         return 1
     fi
     return 0
 }
 
-build_from_source() {
-    local ref=${1:-main}
-    echo -e "${yellow}Không có binary release phù hợp, biên dịch từ source (${ref})...${plain}"
-    ensure_go
+install_service_unit() {
+    if [[ -f "${INSTALL_DIR}/XrayR.service" ]]; then
+        cp -f "${INSTALL_DIR}/XrayR.service" /etc/systemd/system/XrayR.service
+        return 0
+    fi
 
-    TMP_DIR=$(mktemp -d)
-    echo -e "Clone ${GITHUB_BASE}.git ..."
-    if [[ "${ref}" == "main" || "${ref}" == "master" ]]; then
-        git clone --depth 1 --branch main "${GITHUB_BASE}.git" "${TMP_DIR}/src" \
-            || git clone --depth 1 "${GITHUB_BASE}.git" "${TMP_DIR}/src"
-    else
-        if ! git clone --depth 1 --branch "${ref}" "${GITHUB_BASE}.git" "${TMP_DIR}/src"; then
-            git clone "${GITHUB_BASE}.git" "${TMP_DIR}/src"
-            git -C "${TMP_DIR}/src" checkout "${ref}"
+    local version=${1:-}
+    if [[ -n "${version}" ]]; then
+        if download_file "${GITHUB_BASE}/releases/download/${version}/XrayR.service" /etc/systemd/system/XrayR.service; then
+            return 0
         fi
     fi
 
-    (
-        cd "${TMP_DIR}/src"
-        export CGO_ENABLED=0
-        export GOOS=linux
-        export GOARCH="${go_arch}"
-        go mod download
-        go build -v -o "${INSTALL_DIR}/XrayR" -trimpath -ldflags "-s -w -buildid="
-    )
-
-    cp -f "${TMP_DIR}/src/release/config/"* "${INSTALL_DIR}/" 2>/dev/null || true
-    if [[ -f "${INSTALL_DIR}/config.yml.example" && ! -f "${INSTALL_DIR}/config.yml" ]]; then
-        cp -f "${INSTALL_DIR}/config.yml.example" "${INSTALL_DIR}/config.yml"
+    if download_file "${RAW_MAIN}/XrayR.service" /etc/systemd/system/XrayR.service; then
+        return 0
     fi
 
-    # Ensure geoip/geosite exist
-    if [[ ! -f "${INSTALL_DIR}/geoip.dat" || ! -f "${INSTALL_DIR}/geosite.dat" ]]; then
-        echo -e "${green}Tải geoip.dat / geosite.dat...${plain}"
-        for i in geoip geosite; do
-            curl -L "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/${i}.dat" \
-                -o "${INSTALL_DIR}/${i}.dat"
-        done
-    fi
-}
-
-install_service_and_tools() {
-    mkdir -p "${CONFIG_DIR}"
-    rm -f /etc/systemd/system/XrayR.service
-    wget -q -N --no-check-certificate -O /etc/systemd/system/XrayR.service \
-        "${RAW_BASE}/XrayR.service" || {
-        cat >/etc/systemd/system/XrayR.service <<'EOF'
+    cat >/etc/systemd/system/XrayR.service <<'EOF'
 [Unit]
 Description=XrayR Service
 After=network.target nss-lookup.target
@@ -249,7 +208,39 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 EOF
-    }
+}
+
+install_manage_script() {
+    local version=${1:-}
+    if [[ -f "${INSTALL_DIR}/XrayR.sh" ]]; then
+        cp -f "${INSTALL_DIR}/XrayR.sh" /usr/bin/XrayR
+        chmod +x /usr/bin/XrayR
+        ln -sf /usr/bin/XrayR /usr/bin/xrayr
+        return 0
+    fi
+
+    if [[ -n "${version}" ]]; then
+        if download_file "${GITHUB_BASE}/releases/download/${version}/XrayR.sh" /usr/bin/XrayR; then
+            chmod +x /usr/bin/XrayR
+            ln -sf /usr/bin/XrayR /usr/bin/xrayr
+            return 0
+        fi
+    fi
+
+    if download_file "${RAW_MAIN}/XrayR.sh" /usr/bin/XrayR; then
+        chmod +x /usr/bin/XrayR
+        ln -sf /usr/bin/XrayR /usr/bin/xrayr
+        return 0
+    fi
+
+    echo -e "${yellow}Không tải được script quản lý XrayR.sh (có thể cài binary vẫn OK).${plain}"
+}
+
+install_service_and_tools() {
+    local version=${1:-}
+    mkdir -p "${CONFIG_DIR}"
+    rm -f /etc/systemd/system/XrayR.service
+    install_service_unit "${version}"
 
     systemctl daemon-reload
     systemctl stop XrayR 2>/dev/null || true
@@ -266,9 +257,6 @@ EOF
             cp -f "${INSTALL_DIR}/config.yml" "${CONFIG_DIR}/config.yml"
         elif [[ -f "${INSTALL_DIR}/config.yml.example" ]]; then
             cp -f "${INSTALL_DIR}/config.yml.example" "${CONFIG_DIR}/config.yml"
-        else
-            wget -q -N --no-check-certificate -O "${CONFIG_DIR}/config.yml" \
-                "${RAW_BASE}/release/config/config.yml.example"
         fi
         echo -e ""
         echo -e "${yellow}Cài đặt mới: hãy sửa ${CONFIG_DIR}/config.yml trước khi khởi động.${plain}"
@@ -284,19 +272,12 @@ EOF
     fi
 
     for f in dns.json route.json custom_outbound.json custom_inbound.json rulelist; do
-        if [[ ! -f "${CONFIG_DIR}/${f}" ]]; then
-            if [[ -f "${INSTALL_DIR}/${f}" ]]; then
-                cp -f "${INSTALL_DIR}/${f}" "${CONFIG_DIR}/"
-            else
-                wget -q -N --no-check-certificate -O "${CONFIG_DIR}/${f}" \
-                    "${RAW_BASE}/release/config/${f}" 2>/dev/null || true
-            fi
+        if [[ ! -f "${CONFIG_DIR}/${f}" && -f "${INSTALL_DIR}/${f}" ]]; then
+            cp -f "${INSTALL_DIR}/${f}" "${CONFIG_DIR}/"
         fi
     done
 
-    curl -fsSL -o /usr/bin/XrayR "${RAW_BASE}/XrayR.sh"
-    chmod +x /usr/bin/XrayR
-    ln -sf /usr/bin/XrayR /usr/bin/xrayr
+    install_manage_script "${version}"
 }
 
 show_usage() {
@@ -331,16 +312,13 @@ install_XrayR() {
 
     if [[ $# -eq 0 ]]; then
         version=$(get_latest_version || true)
-        if [[ -n "${version}" ]]; then
-            echo -e "Phát hiện bản mới nhất: ${green}${version}${plain}"
-            if download_release "${version}"; then
-                used_release=1
-            else
-                echo -e "${yellow}Tải release thất bại, chuyển sang biên dịch từ source.${plain}"
-            fi
-        else
-            echo -e "${yellow}Chưa có GitHub Release, sẽ biên dịch từ source.${plain}"
+        if [[ -z "${version}" ]]; then
+            echo -e "${red}Không tìm thấy GitHub Release.${plain}"
+            echo -e "Hãy tạo Release tại: ${GITHUB_BASE}/releases"
+            echo -e "Hoặc cài phiên bản chỉ định: bash install.sh v0.9.5"
+            exit 1
         fi
+        echo -e "Phát hiện bản mới nhất: ${green}${version}${plain}"
     else
         if [[ $1 == v* ]]; then
             version=$1
@@ -348,31 +326,30 @@ install_XrayR() {
             version="v$1"
         fi
         echo -e "Cài đặt phiên bản chỉ định: ${green}${version}${plain}"
-        if download_release "${version}"; then
-            used_release=1
-        else
-            echo -e "${yellow}Không tải được ${version}, thử biên dịch từ tag/branch đó.${plain}"
-        fi
     fi
 
-    if [[ ${used_release} -eq 1 ]]; then
-        unzip -o XrayR-linux.zip
-        rm -f XrayR-linux.zip
-        if [[ ! -f "${INSTALL_DIR}/config.yml" && -f "${INSTALL_DIR}/config.yml.example" ]]; then
-            cp -f "${INSTALL_DIR}/config.yml.example" "${INSTALL_DIR}/config.yml"
-        fi
+    if download_release "${version}"; then
+        used_release=1
     else
-        if [[ $# -eq 0 ]]; then
-            build_from_source "main"
-            version="source-main"
-        else
-            build_from_source "${version}"
-        fi
+        echo -e "${red}Tải binary release thất bại: XrayR-linux-${arch}.zip${plain}"
+        echo -e "Kiểm tra Release có asset đúng kiến trúc tại: ${GITHUB_BASE}/releases/tag/${version}"
+        exit 1
+    fi
+
+    unzip -o XrayR-linux.zip
+    rm -f XrayR-linux.zip
+    if [[ ! -f "${INSTALL_DIR}/config.yml" && -f "${INSTALL_DIR}/config.yml.example" ]]; then
+        cp -f "${INSTALL_DIR}/config.yml.example" "${INSTALL_DIR}/config.yml"
+    fi
+
+    if [[ ! -f "${INSTALL_DIR}/XrayR" ]]; then
+        echo -e "${red}ZIP release thiếu file binary XrayR.${plain}"
+        exit 1
     fi
 
     chmod +x "${INSTALL_DIR}/XrayR"
     echo -e "${green}XrayR ${version}${plain} đã cài vào ${INSTALL_DIR}"
-    install_service_and_tools
+    install_service_and_tools "${version}"
     cd "${cur_dir}"
     show_usage
 }
