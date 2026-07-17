@@ -50,6 +50,7 @@ type UserResponse struct {
 // Response is the common response
 type Response struct {
 	Ret  uint            `json:"ret"`
+	Msg  string          `json:"msg"`
 	Data json.RawMessage `json:"data"`
 }
 

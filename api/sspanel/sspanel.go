@@ -148,13 +148,16 @@ func (c *APIClient) parseResponse(res *resty.Response, path string, err error) (
 
 	if res.StatusCode() > 400 {
 		body := res.Body()
-		return nil, fmt.Errorf("request %s failed: %s, %v", c.assembleURL(path), string(body), err)
+		return nil, fmt.Errorf("request %s failed (HTTP %d): %s", c.assembleURL(path), res.StatusCode(), string(body))
 	}
 	response := res.Result().(*Response)
 
 	if response.Ret != 1 {
-		res, _ := json.Marshal(&response)
-		return nil, fmt.Errorf("ret %s invalid", string(res))
+		if response.Msg != "" {
+			return nil, fmt.Errorf("panel rejected request %s: %s (ret=%d). Check ApiKey, NodeID, node type on panel, and VPS IP whitelist", c.assembleURL(path), response.Msg, response.Ret)
+		}
+		resBody, _ := json.Marshal(&response)
+		return nil, fmt.Errorf("panel rejected request %s: ret %s invalid", c.assembleURL(path), string(resBody))
 	}
 	return response, nil
 }
