@@ -270,24 +270,28 @@ func (c *APIClient) GetUserList() (UserList *[]api.UserInfo, err error) {
 
 // ReportNodeStatus reports the node status to the ssPanel
 func (c *APIClient) ReportNodeStatus(nodeStatus *api.NodeStatus) (err error) {
-	// Determine whether a status report is in need
-	if compareVersion(c.version, "2023.2") == -1 {
-		path := fmt.Sprintf("/mod_mu/nodes/%d/info", c.NodeID)
-		systemLoad := SystemLoad{
-			Uptime: strconv.FormatUint(nodeStatus.Uptime, 10),
-			Load:   fmt.Sprintf("%.2f %.2f %.2f", nodeStatus.CPU/100, nodeStatus.Mem/100, nodeStatus.Disk/100),
-		}
+	// Legacy ssPanel (< 2023.2) accepts POST /mod_mu/nodes/{id}/info for load/uptime.
+	// Modern forks (e.g. DPanel) often omit version and reject POST with HTTP 405.
+	// Only report when we know the panel is an old ssPanel that expects it.
+	if c.version == "" || compareVersion(c.version, "2023.2") >= 0 {
+		return nil
+	}
 
-		res, err := c.client.R().
-			SetBody(systemLoad).
-			SetResult(&Response{}).
-			ForceContentType("application/json").
-			Post(path)
+	path := fmt.Sprintf("/mod_mu/nodes/%d/info", c.NodeID)
+	systemLoad := SystemLoad{
+		Uptime: strconv.FormatUint(nodeStatus.Uptime, 10),
+		Load:   fmt.Sprintf("%.2f %.2f %.2f", nodeStatus.CPU/100, nodeStatus.Mem/100, nodeStatus.Disk/100),
+	}
 
-		_, err = c.parseResponse(res, path, err)
-		if err != nil {
-			return err
-		}
+	res, err := c.client.R().
+		SetBody(systemLoad).
+		SetResult(&Response{}).
+		ForceContentType("application/json").
+		Post(path)
+
+	_, err = c.parseResponse(res, path, err)
+	if err != nil {
+		return err
 	}
 	return nil
 }
