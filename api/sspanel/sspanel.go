@@ -28,21 +28,22 @@ var (
 
 // APIClient create a api client to the panel.
 type APIClient struct {
-	client              *resty.Client
-	APIHost             string
-	NodeID              int
-	Key                 string
-	NodeType            string
-	EnableVless         bool
-	VlessFlow           string
-	SpeedLimit          float64
-	DeviceLimit         int
-	DisableCustomConfig bool
-	LocalRuleList       []api.DetectRule
-	LastReportOnline    map[int]int
-	access              sync.Mutex
-	version             string
-	eTags               map[string]string
+	client                  *resty.Client
+	APIHost                 string
+	NodeID                  int
+	Key                     string
+	NodeType                string
+	EnableVless             bool
+	VlessFlow               string
+	SpeedLimit              float64
+	DeviceLimit             int
+	DisableCustomConfig     bool
+	LocalRuleList           []api.DetectRule
+	LastReportOnline        map[int]int
+	access                  sync.Mutex
+	version                 string
+	eTags                   map[string]string
+	statusReportUnsupported bool
 }
 
 // New create api instance
@@ -274,8 +275,10 @@ func (c *APIClient) GetUserList() (UserList *[]api.UserInfo, err error) {
 // ReportNodeStatus reports the node status to the ssPanel
 func (c *APIClient) ReportNodeStatus(nodeStatus *api.NodeStatus) (err error) {
 	// Legacy ssPanel (< 2023.2) accepts POST /mod_mu/nodes/{id}/info for load/uptime.
-	// Modern forks (e.g. DPanel) often omit version and reject POST with HTTP 405.
-	// Only report when we know the panel is an old ssPanel that expects it.
+	// Modern forks (e.g. DPanel) often reject this endpoint with 405/Invalid request.
+	if c.statusReportUnsupported {
+		return nil
+	}
 	if c.version == "" || compareVersion(c.version, "2023.2") >= 0 {
 		return nil
 	}
@@ -292,8 +295,19 @@ func (c *APIClient) ReportNodeStatus(nodeStatus *api.NodeStatus) (err error) {
 		ForceContentType("application/json").
 		Post(path)
 
+	if res != nil && res.StatusCode() == 405 {
+		c.statusReportUnsupported = true
+		log.Print("Panel returned HTTP 405 for node status reporting; disabling legacy status report")
+		return nil
+	}
+
 	_, err = c.parseResponse(res, path, err)
 	if err != nil {
+		if strings.Contains(err.Error(), "Invalid request") {
+			c.statusReportUnsupported = true
+			log.Print("Panel rejected legacy node status report; disabling status report")
+			return nil
+		}
 		return err
 	}
 	return nil
