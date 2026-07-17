@@ -157,3 +157,92 @@ func TestReportIllegal(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestParseV2rayNodeResponseShortServerString(t *testing.T) {
+	client := sspanel.New(&api.Config{
+		APIHost:  "http://127.0.0.1:667",
+		Key:      "123",
+		NodeID:   1,
+		NodeType: "V2ray",
+	})
+
+	_, err := client.ParseV2rayNodeResponse(&sspanel.NodeInfoResponse{
+		RawServerString: "vn1.co2.vn",
+	})
+	if err == nil {
+		t.Fatal("expected error for short legacy server string, got nil")
+	}
+	t.Log(err)
+}
+
+func TestParseV2rayNodeResponseValidLegacy(t *testing.T) {
+	client := sspanel.New(&api.Config{
+		APIHost:  "http://127.0.0.1:667",
+		Key:      "123",
+		NodeID:   1,
+		NodeType: "V2ray",
+	})
+
+	nodeInfo, err := client.ParseV2rayNodeResponse(&sspanel.NodeInfoResponse{
+		RawServerString: "vn1.co2.vn;443;0;ws;tls;path=/v2|host=vn1.co2.vn",
+		SpeedLimit:      100,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nodeInfo.Port != 443 {
+		t.Fatalf("port=%d want 443", nodeInfo.Port)
+	}
+	if nodeInfo.TransportProtocol != "ws" {
+		t.Fatalf("transport=%s want ws", nodeInfo.TransportProtocol)
+	}
+	if !nodeInfo.EnableTLS {
+		t.Fatal("expected EnableTLS=true")
+	}
+}
+
+func TestParseSSPanelNodeInfoReality(t *testing.T) {
+	client := sspanel.New(&api.Config{
+		APIHost:  "http://127.0.0.1:667",
+		Key:      "123",
+		NodeID:   1,
+		NodeType: "V2ray",
+	})
+
+	custom := []byte(`{
+		"offset_port_node": "443",
+		"host": "www.amazon.com",
+		"network": "tcp",
+		"security": "reality",
+		"enable_vless": "1",
+		"flow": "xtls-rprx-vision",
+		"enable_reality": true,
+		"reality-opts": {
+			"dest": "www.amazon.com:443",
+			"server_names": ["www.amazon.com"],
+			"private_key": "test-key",
+			"short_ids": ["", "0123456789abcdef"]
+		}
+	}`)
+
+	nodeInfo, err := client.ParseSSPanelNodeInfo(&sspanel.NodeInfoResponse{
+		CustomConfig: custom,
+		SpeedLimit:   100,
+		Version:      "2022.1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !nodeInfo.EnableVless {
+		t.Fatal("expected EnableVless")
+	}
+	if !nodeInfo.EnableREALITY {
+		t.Fatal("expected EnableREALITY")
+	}
+	if nodeInfo.EnableTLS {
+		t.Fatal("REALITY should not force EnableTLS")
+	}
+	if nodeInfo.Port != 443 {
+		t.Fatalf("port=%d want 443", nodeInfo.Port)
+	}
+}

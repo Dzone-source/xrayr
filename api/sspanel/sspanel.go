@@ -187,20 +187,31 @@ func (c *APIClient) GetNodeInfo() (nodeInfo *api.NodeInfo, err error) {
 		return nil, fmt.Errorf("unmarshal %s failed: %s", reflect.TypeOf(nodeInfoResponse), err)
 	}
 
-	// determine ssPanel version, if disable custom config or version < 2021.11, then use old api
+	// determine ssPanel version
 	c.version = nodeInfoResponse.Version
-	var isExpired bool
-	if compareVersion(c.version, "2021.11") == -1 {
-		isExpired = true
-	}
+	hasCustomConfig := len(nodeInfoResponse.CustomConfig) > 0 && string(nodeInfoResponse.CustomConfig) != "null"
+	isExpired := c.version != "" && compareVersion(c.version, "2021.11") == -1
 
-	if c.DisableCustomConfig || isExpired {
+	// Prefer custom_config when present. Many modern panels omit/return empty version
+	// while still providing custom_config; forcing the legacy server-string parser
+	// panics or fails on short values like "vn1.example.com".
+	useCustomConfig := !c.DisableCustomConfig && hasCustomConfig
+	if useCustomConfig {
+		nodeInfo, err = c.ParseSSPanelNodeInfo(nodeInfoResponse)
+		if err != nil {
+			res, _ := json.Marshal(nodeInfoResponse)
+			return nil, fmt.Errorf("parse node info failed: %s, \nError: %s, \nPlease check the doc of custom_config for help: https://xrayr-project.github.io/XrayR-doc/dui-jie-sspanel/sspanel/sspanel_custom_config", string(res), err)
+		}
+	} else {
 		if isExpired {
 			log.Print("The panel version is expired, it is recommended to update immediately")
 		}
+		if !hasCustomConfig && !c.DisableCustomConfig {
+			log.Print("custom_config is empty, falling back to legacy server-string parser")
+		}
 
 		switch c.NodeType {
-		case "V2ray":
+		case "V2ray", "Vmess", "Vless":
 			nodeInfo, err = c.ParseV2rayNodeResponse(nodeInfoResponse)
 		case "Trojan":
 			nodeInfo, err = c.ParseTrojanNodeResponse(nodeInfoResponse)
@@ -210,12 +221,6 @@ func (c *APIClient) GetNodeInfo() (nodeInfo *api.NodeInfo, err error) {
 			nodeInfo, err = c.ParseSSPluginNodeResponse(nodeInfoResponse)
 		default:
 			return nil, fmt.Errorf("unsupported Node type: %s", c.NodeType)
-		}
-	} else {
-		nodeInfo, err = c.ParseSSPanelNodeInfo(nodeInfoResponse)
-		if err != nil {
-			res, _ := json.Marshal(nodeInfoResponse)
-			return nil, fmt.Errorf("parse node info failed: %s, \nError: %s, \nPlease check the doc of custom_config for help: https://xrayr-project.github.io/XrayR-doc/dui-jie-sspanel/sspanel/sspanel_custom_config", string(res), err)
 		}
 	}
 
@@ -416,8 +421,12 @@ func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (
 	if nodeInfoResponse.RawServerString == "" {
 		return nil, fmt.Errorf("no server info in response")
 	}
-	// nodeInfo.RawServerString = strings.ToLower(nodeInfo.RawServerString)
+	// Expected legacy format:
+	// host;port;alterId;network;tls;path=/|host=xx|servicename=xx|headerType=xx
 	serverConf := strings.Split(nodeInfoResponse.RawServerString, ";")
+	if len(serverConf) < 6 {
+		return nil, fmt.Errorf("invalid legacy server string %q: need at least 6 ';' fields (host;port;alterId;network;tls;extra), got %d. Prefer filling custom_config on the panel", nodeInfoResponse.RawServerString, len(serverConf))
+	}
 
 	parsedPort, err := strconv.ParseInt(serverConf[1], 10, 32)
 	if err != nil {
@@ -447,7 +456,7 @@ func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (
 	for _, item := range extraServerConf {
 		conf := strings.Split(item, "=")
 		key := conf[0]
-		if key == "" {
+		if key == "" || len(conf) < 2 {
 			continue
 		}
 		value := conf[1]
@@ -550,7 +559,13 @@ func (c *APIClient) ParseSSPluginNodeResponse(nodeInfoResponse *NodeInfoResponse
 	var path, host, transportProtocol string
 	var speedLimit uint64 = 0
 
+	if nodeInfoResponse.RawServerString == "" {
+		return nil, fmt.Errorf("no server info in response")
+	}
 	serverConf := strings.Split(nodeInfoResponse.RawServerString, ";")
+	if len(serverConf) < 6 {
+		return nil, fmt.Errorf("invalid legacy server string %q: need at least 6 ';' fields, got %d", nodeInfoResponse.RawServerString, len(serverConf))
+	}
 	parsedPort, err := strconv.ParseInt(serverConf[1], 10, 32)
 	if err != nil {
 		return nil, err
@@ -576,7 +591,7 @@ func (c *APIClient) ParseSSPluginNodeResponse(nodeInfoResponse *NodeInfoResponse
 	for _, item := range extraServerConf {
 		conf := strings.Split(item, "=")
 		key := conf[0]
-		if key == "" {
+		if key == "" || len(conf) < 2 {
 			continue
 		}
 		value := conf[1]
@@ -642,13 +657,16 @@ func (c *APIClient) ParseTrojanNodeResponse(nodeInfoResponse *NodeInfoResponse) 
 	port := uint32(parsedPort)
 
 	serverConf := strings.Split(nodeInfoResponse.RawServerString, ";")
+	if len(serverConf) < 2 {
+		return nil, fmt.Errorf("invalid legacy trojan server string %q", nodeInfoResponse.RawServerString)
+	}
 	extraServerConf := strings.Split(serverConf[1], "|")
 	transportProtocol = "tcp"
 	serviceName = ""
 	for _, item := range extraServerConf {
 		conf := strings.Split(item, "=")
 		key := conf[0]
-		if key == "" {
+		if key == "" || len(conf) < 2 {
 			continue
 		}
 		value := conf[1]
@@ -773,15 +791,19 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 	switch c.NodeType {
 	case "Shadowsocks":
 		transportProtocol = "tcp"
-	case "V2ray":
+	case "V2ray", "Vmess", "Vless":
 		transportProtocol = nodeConfig.Network
 
 		tlsType := nodeConfig.Security
 		if tlsType == "tls" || tlsType == "xtls" {
 			enableTLS = true
 		}
+		if tlsType == "reality" || nodeConfig.EnableREALITY {
+			// REALITY does not use traditional TLS certificates.
+			enableTLS = false
+		}
 
-		if nodeConfig.EnableVless == "1" {
+		if nodeConfig.EnableVless == "1" || c.NodeType == "Vless" || c.EnableVless {
 			enableVless = true
 		}
 	case "Trojan":
