@@ -405,11 +405,11 @@ RouteConfigPath:
 InboundConfigPath:
 OutboundConfigPath:
 ConnectionConfig:
-  Handshake: 4
-  ConnIdle: 30
-  UplinkOnly: 2
-  DownlinkOnly: 4
-  BufferSize: 64
+  Handshake: 8
+  ConnIdle: 300
+  UplinkOnly: 5
+  DownlinkOnly: 8
+  BufferSize: 512
 Nodes:
   - PanelType: "${PanelType}"
     ApiConfig:
@@ -427,7 +427,7 @@ Nodes:
     ControllerConfig:
       ListenIP: 0.0.0.0
       SendIP: 0.0.0.0
-      UpdatePeriodic: 60
+      UpdatePeriodic: 90
       EnableDNS: false
       DNSType: AsIs
       EnableProxyProtocol: false
@@ -462,6 +462,75 @@ open_ports() {
     echo -e "${green}Đã mở firewall (ACCEPT tất cả).${plain}"
 }
 
+patch_config_performance() {
+    local f="/etc/XrayR/config.yml"
+    if [[ ! -f "${f}" ]]; then
+        echo -e "${yellow}Không tìm thấy ${f}, bỏ qua tinh chỉnh config.${plain}"
+        return 0
+    fi
+    cp -a "${f}" "${f}.bak.performance.$(date +%s)"
+
+    sed -i \
+        -e 's/^  Handshake:.*/  Handshake: 8/' \
+        -e 's/^  ConnIdle:.*/  ConnIdle: 300/' \
+        -e 's/^  UplinkOnly:.*/  UplinkOnly: 5/' \
+        -e 's/^  DownlinkOnly:.*/  DownlinkOnly: 8/' \
+        -e 's/^  BufferSize:.*/  BufferSize: 512/' \
+        -e 's/^  Level:.*/  Level: warning/' \
+        -e 's/^      UpdatePeriodic:.*/      UpdatePeriodic: 90/' \
+        "${f}"
+
+    echo -e "${green}Đã áp dụng thông số ConnectionConfig / UpdatePeriodic / Log.${plain}"
+}
+
+run_network_tune() {
+    local tune_script="/usr/local/XrayR/scripts/tune-network.sh"
+    if [[ -x "${tune_script}" ]]; then
+        bash "${tune_script}"
+        return $?
+    fi
+    local url="https://github.com/${REPO}/releases/latest/download/tune-network.sh"
+    if curl -fsSL -o /tmp/tune-network.sh "${url}" 2>/dev/null; then
+        chmod +x /tmp/tune-network.sh
+        bash /tmp/tune-network.sh
+        return $?
+    fi
+    echo -e "${yellow}Không tải được tune-network.sh, dùng BBR cơ bản...${plain}"
+    cat >/etc/sysctl.d/99-xrayr-tune.conf <<'EOF'
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr
+net.ipv4.tcp_fastopen=3
+EOF
+    sysctl --system >/dev/null 2>&1 || sysctl -p /etc/sysctl.d/99-xrayr-tune.conf 2>/dev/null || true
+}
+
+optimize_all() {
+    echo -e "${green}=== Tối ưu XrayR ===${plain}"
+    run_network_tune
+    patch_config_performance
+
+    if [[ -f /etc/systemd/system/XrayR.service ]]; then
+        if ! grep -q 'LimitNOFILE=1048576' /etc/systemd/system/XrayR.service 2>/dev/null; then
+            sed -i 's/^LimitNOFILE=.*/LimitNOFILE=1048576/' /etc/systemd/system/XrayR.service 2>/dev/null || true
+            sed -i 's/^RestartSec=.*/RestartSec=5/' /etc/systemd/system/XrayR.service 2>/dev/null || true
+            systemctl daemon-reload
+        fi
+    fi
+
+    if check_status 2>/dev/null; then
+        systemctl restart XrayR
+        sleep 2
+        echo -e "${green}Đã khởi động lại XrayR với cấu hình tối ưu.${plain}"
+    else
+        echo -e "${yellow}XrayR chưa chạy — config/sysctl đã lưu, chạy: XrayR start${plain}"
+    fi
+
+    echo -e "${green}Hoàn tất. Gợi ý: giữ Log Level = warning, tránh debug trên production.${plain}"
+    if [[ $# -eq 0 ]]; then
+        before_show_menu
+    fi
+}
+
 show_usage() {
     echo "Cách dùng XrayR:"
     echo "------------------------------------------"
@@ -479,6 +548,7 @@ show_usage() {
     echo "XrayR install      - Cài đặt"
     echo "XrayR uninstall    - Gỡ cài đặt"
     echo "XrayR version      - Phiên bản"
+    echo "XrayR optimize     - Tối ưu mạng + config (BBR, buffer)"
     echo "------------------------------------------"
 }
 
@@ -506,9 +576,10 @@ show_menu() {
   ${green}13.${plain} Nâng cấp script quản lý
   ${green}14.${plain} Tạo file cấu hình
   ${green}15.${plain} Mở toàn bộ cổng firewall
+  ${green}16.${plain} Tối ưu hiệu năng (BBR + buffer)
  "
     show_status
-    echo && read -rp "Chọn [0-15]: " num
+    echo && read -rp "Chọn [0-16]: " num
 
     case "${num}" in
         0) config ;;
@@ -527,7 +598,8 @@ show_menu() {
         13) update_shell ;;
         14) generate_config_file ;;
         15) open_ports ;;
-        *) echo -e "${red}Nhập số trong khoảng 0-15${plain}" ;;
+        16) optimize_all ;;
+        *) echo -e "${red}Nhập số trong khoảng 0-16${plain}" ;;
     esac
 }
 
@@ -546,6 +618,7 @@ if [[ $# -gt 0 ]]; then
         install) check_uninstall 0 && install 0 ;;
         uninstall) check_install 0 && uninstall 0 ;;
         version) check_install 0 && show_XrayR_version 0 ;;
+        optimize) optimize_all 0 ;;
         update_shell) update_shell ;;
         *) show_usage ;;
     esac

@@ -199,11 +199,11 @@ Type=simple
 LimitAS=infinity
 LimitRSS=infinity
 LimitCORE=infinity
-LimitNOFILE=999999
+LimitNOFILE=1048576
 WorkingDirectory=/usr/local/XrayR/
 ExecStart=/usr/local/XrayR/XrayR --config /etc/XrayR/config.yml
 Restart=on-failure
-RestartSec=10
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target

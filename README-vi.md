@@ -80,6 +80,7 @@ wget -N https://github.com/Dzone-source/xrayr/releases/latest/download/install.s
 Sau khi cài xong:
 - Sửa cấu hình: `/etc/XrayR/config.yml`
 - Quản lý dịch vụ: gõ `XrayR` (menu) hoặc `XrayR start|stop|restart|log|status`
+- **Tối ưu mượt mà (BBR + buffer):** `XrayR optimize`
 
 Cài phiên bản cụ thể:
 

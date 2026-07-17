@@ -7,11 +7,11 @@ RouteConfigPath: # /etc/XrayR/route.json
 InboundConfigPath: # /etc/XrayR/custom_inbound.json
 OutboundConfigPath: # /etc/XrayR/custom_outbound.json
 ConnectionConfig:
-  Handshake: 4
-  ConnIdle: 30
-  UplinkOnly: 2
-  DownlinkOnly: 4
-  BufferSize: 64
+  Handshake: 8
+  ConnIdle: 300
+  UplinkOnly: 5
+  DownlinkOnly: 8
+  BufferSize: 512
 Nodes:
   - PanelType: "NewV2board" # SSpanel, NewV2board, PMpanel, Proxypanel, V2RaySocks, GoV2Panel, BunPanel
     ApiConfig:
@@ -29,7 +29,7 @@ Nodes:
     ControllerConfig:
       ListenIP: 0.0.0.0
       SendIP: 0.0.0.0
-      UpdatePeriodic: 60
+      UpdatePeriodic: 90
       EnableDNS: false
       DNSType: AsIs
       EnableProxyProtocol: false
