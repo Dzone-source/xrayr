@@ -63,19 +63,35 @@
 
 ## نصب نرم افزار
 
-### نصب بصورت یکپارچه
+### نصب با یک دستور
 
+```bash
+bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh)
 ```
-wget -N https://raw.githubusercontent.com/XrayR-project/XrayR-release/master/install.sh && bash install.sh
+
+یا:
+
+```bash
+wget -N https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh && bash install.sh
 ```
 
-### استقرار نرم افزار با استفاده از Docker
+پس از نصب:
+- فایل تنظیمات: `/etc/XrayR/config.yml`
+- مدیریت سرویس: `XrayR` یا `XrayR start|stop|restart|log|status`
 
-[آموزش استقرار داکر](https://xrayr-project.github.io/XrayR-doc/xrayr-xia-zai-he-an-zhuang/install/docker)
+### Docker
+
+```bash
+docker build -t xrayr .
+docker run -d --name xrayr --network host -v /etc/XrayR:/etc/XrayR xrayr
+```
 
 ### نصب دستی
 
-[آموزش نصب دستی](https://xrayr-project.github.io/XrayR-doc/xrayr-xia-zai-he-an-zhuang/install/manual)
+1. نصب Go (>= 1.24)
+2. `git clone https://github.com/Dzone-source/xrayr.git && cd xrayr`
+3. `CGO_ENABLED=0 go build -o XrayR -trimpath -ldflags "-s -w -buildid="`
+4. باینری و فایل‌های `release/config/` را روی سرور کپی کنید و با `--config /etc/XrayR/config.yml` اجرا کنید
 
 ## فایل های پیکربندی و آموزش های با جرئیات
 

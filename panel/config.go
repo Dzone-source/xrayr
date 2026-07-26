@@ -28,9 +28,9 @@ type LogConfig struct {
 }
 
 type ConnectionConfig struct {
-	Handshake    uint32 `mapstructure:"handshake"`
-	ConnIdle     uint32 `mapstructure:"connIdle"`
-	UplinkOnly   uint32 `mapstructure:"uplinkOnly"`
-	DownlinkOnly uint32 `mapstructure:"downlinkOnly"`
-	BufferSize   int32  `mapstructure:"bufferSize"`
+	Handshake    uint32 `mapstructure:"Handshake"`
+	ConnIdle     uint32 `mapstructure:"ConnIdle"`
+	UplinkOnly   uint32 `mapstructure:"UplinkOnly"`
+	DownlinkOnly uint32 `mapstructure:"DownlinkOnly"`
+	BufferSize   int32  `mapstructure:"BufferSize"`
 }
