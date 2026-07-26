@@ -1,6 +1,7 @@
 package sspanel_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -244,5 +245,106 @@ func TestParseSSPanelNodeInfoReality(t *testing.T) {
 	}
 	if nodeInfo.Port != 443 {
 		t.Fatalf("port=%d want 443", nodeInfo.Port)
+	}
+}
+
+// DPanel often sends numeric ports and boolean allow_insecure; that used to panic XrayR on Trojan/V2ray start.
+func TestParseSSPanelNodeInfoDPanelNumericPort(t *testing.T) {
+	client := sspanel.New(&api.Config{
+		APIHost:  "http://127.0.0.1:667",
+		Key:      "123",
+		NodeID:   1,
+		NodeType: "Trojan",
+	})
+
+	custom := []byte(`{
+		"offset_port_user": 443,
+		"offset_port_node": 443,
+		"network": "tcp",
+		"host": "jp3.co2.vn",
+		"allow_insecure": false,
+		"mux": false,
+		"udp": true
+	}`)
+
+	nodeInfo, err := client.ParseSSPanelNodeInfo(&sspanel.NodeInfoResponse{
+		CustomConfig: custom,
+		SpeedLimit:   0,
+		Version:      "1.0.0",
+		RawServerString: "jp3.co2.vn",
+		Type:            "DPanel",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nodeInfo.Port != 443 {
+		t.Fatalf("port=%d want 443", nodeInfo.Port)
+	}
+	if !nodeInfo.EnableTLS {
+		t.Fatal("Trojan should EnableTLS")
+	}
+	if nodeInfo.TransportProtocol != "tcp" {
+		t.Fatalf("transport=%s want tcp", nodeInfo.TransportProtocol)
+	}
+	if nodeInfo.Host != "jp3.co2.vn" {
+		t.Fatalf("host=%s want jp3.co2.vn", nodeInfo.Host)
+	}
+}
+
+func TestParseSSPanelNodeInfoVmessWSNumericPort(t *testing.T) {
+	client := sspanel.New(&api.Config{
+		APIHost:  "http://127.0.0.1:667",
+		Key:      "123",
+		NodeID:   3,
+		NodeType: "V2ray",
+	})
+
+	custom := []byte(`{
+		"offset_port_node": 80,
+		"network": "ws",
+		"security": "none",
+		"host": "jp3.co2.vn",
+		"path": "/v2ray",
+		"allow_insecure": false
+	}`)
+
+	nodeInfo, err := client.ParseSSPanelNodeInfo(&sspanel.NodeInfoResponse{
+		CustomConfig: custom,
+		SpeedLimit:   100,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nodeInfo.Port != 80 {
+		t.Fatalf("port=%d want 80", nodeInfo.Port)
+	}
+	if nodeInfo.TransportProtocol != "ws" {
+		t.Fatalf("transport=%s want ws", nodeInfo.TransportProtocol)
+	}
+	if nodeInfo.EnableTLS {
+		t.Fatal("security none should not EnableTLS")
+	}
+}
+
+func TestFlexStringUnmarshal(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{`"443"`, "443"},
+		{`443`, "443"},
+		{`443.0`, "443"},
+		{`true`, "true"},
+		{`false`, "false"},
+		{`null`, ""},
+	}
+	for _, tc := range cases {
+		var f sspanel.FlexString
+		if err := json.Unmarshal([]byte(tc.in), &f); err != nil {
+			t.Fatalf("unmarshal %s: %v", tc.in, err)
+		}
+		if f.String() != tc.want {
+			t.Fatalf("%s -> %q want %q", tc.in, f.String(), tc.want)
+		}
 	}
 }

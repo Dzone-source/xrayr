@@ -802,9 +802,13 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 		speedLimit = uint64((nodeInfoResponse.SpeedLimit * 1000000) / 8)
 	}
 
-	parsedPort, err := strconv.ParseInt(nodeConfig.OffsetPortNode, 10, 32)
+	portStr := nodeConfig.OffsetPortNode.String()
+	if portStr == "" {
+		return nil, errors.New("custom_config.offset_port_node is empty")
+	}
+	parsedPort, err := strconv.ParseInt(portStr, 10, 32)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid offset_port_node %q: %w", portStr, err)
 	}
 
 	port := uint32(parsedPort)
@@ -824,7 +828,8 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 			enableTLS = false
 		}
 
-		if nodeConfig.EnableVless == "1" || c.NodeType == "Vless" || c.EnableVless {
+		enableVlessVal := nodeConfig.EnableVless.String()
+		if enableVlessVal == "1" || enableVlessVal == "true" || c.NodeType == "Vless" || c.EnableVless {
 			enableVless = true
 		}
 	case "Trojan":
@@ -834,6 +839,10 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 		// Select transport protocol
 		if nodeConfig.Network != "" {
 			transportProtocol = nodeConfig.Network // try to read transport protocol from config
+		}
+		// DPanel may set security explicitly; keep TLS on for Trojan unless REALITY.
+		if nodeConfig.EnableREALITY || nodeConfig.Security == "reality" {
+			enableTLS = false
 		}
 	}
 

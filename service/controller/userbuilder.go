@@ -60,16 +60,25 @@ func (c *Controller) buildVlessUser(userInfo *[]api.UserInfo) (users []*protocol
 }
 
 func (c *Controller) buildTrojanUser(userInfo *[]api.UserInfo) (users []*protocol.User) {
-	users = make([]*protocol.User, len(*userInfo))
-	for i, user := range *userInfo {
-		trojanAccount := &trojan.Account{
-			Password: user.UUID,
+	users = make([]*protocol.User, 0, len(*userInfo))
+	for _, user := range *userInfo {
+		// SSPanel/DPanel Trojan password is normally UUID; some panels only fill passwd.
+		password := user.UUID
+		if password == "" {
+			password = user.Passwd
 		}
-		users[i] = &protocol.User{
+		if password == "" {
+			errors.LogError(context.Background(), "[UID: %d] trojan password empty (uuid and passwd)", user.UID)
+			continue
+		}
+		trojanAccount := &trojan.Account{
+			Password: password,
+		}
+		users = append(users, &protocol.User{
 			Level:   0,
 			Email:   c.buildUserTag(&user),
 			Account: serial.ToTypedMessage(trojanAccount),
-		}
+		})
 	}
 	return users
 }
