@@ -12,7 +12,8 @@ Node protocol: **Trojan** (`NodeType: Trojan`).
 
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/cursor/hiddify-stable-node-7233/install.sh)
-nano /etc/XrayR/config.yml   # NodeType: Trojan + CertConfig
+# Config thường nằm tại /etc/xrayr (hoặc /etc/XrayR tùy bản cài)
+nano /etc/xrayr/config.yml   # NodeType: Trojan + CertConfig
 systemctl restart XrayR
 journalctl -u XrayR -n 80 --no-pager
 ```
@@ -38,19 +39,37 @@ ConnectionConfig:
   BufferSize: 1024
 ```
 
-Deploy node:
+Deploy node (config tại **`/etc/xrayr`**):
 
 ```bash
-git fetch origin cursor/hiddify-stable-node-7233
-# rebuild/reinstall XrayR binary từ branch này, rồi:
+# Tìm binary đang chạy
+systemctl cat XrayR | grep -E 'ExecStart|WorkingDirectory'
+# thường: ExecStart=.../XrayR --config /etc/xrayr/config.yml
+
+cd /tmp
+rm -rf xrayr && git clone -b cursor/hiddify-stable-node-7233 https://github.com/Dzone-source/xrayr.git
+cd xrayr
+BIN=$(systemctl show -p ExecStart --value XrayR | awk '{print $1}')
+[[ -z "$BIN" || "$BIN" == "/"* ]] || BIN=/usr/local/XrayR/XrayR
+# nếu ExecStart dạng "/path/XrayR --config ..."
+BIN=$(systemctl show -p ExecStart --value XrayR | sed -E 's/^.*path=([^ ;]+).*/\1/; t; s/^ExecStart=//; s/ .*//')
+[[ -x "$BIN" ]] || BIN=/usr/local/XrayR/XrayR
+
+go build -o "$BIN" -ldflags "-s -w" -trimpath .
+
+CFG=/etc/xrayr/config.yml
+[[ -f "$CFG" ]] || CFG=/etc/XrayR/config.yml
 sed -i \
   -e 's/^  ConnIdle:.*/  ConnIdle: 600/' \
   -e 's/^  UplinkOnly:.*/  UplinkOnly: 3600/' \
   -e 's/^  DownlinkOnly:.*/  DownlinkOnly: 3600/' \
   -e 's/^  BufferSize:.*/  BufferSize: 1024/' \
-  /etc/XrayR/config.yml
+  "$CFG"
+# SpeedLimit/DeviceLimit trong ApiConfig
+grep -nE 'SpeedLimit|DeviceLimit' "$CFG"
+
 systemctl restart XrayR
-journalctl -u XrayR -f | egrep -i 'user deleted|not a valid user|Devices reach'
+journalctl -u XrayR -f | egrep -i 'GetUserList|user deleted|not a valid user'
 ```
 
-Khi upload: không còn `user deleted` định kỳ. `SpeedLimit: 0`, `DeviceLimit: 0` vẫn nên giữ.
+Khi upload: không còn `user deleted` định kỳ; phải thấy `GetUserList: N users` với N>0. `SpeedLimit: 0`, `DeviceLimit: 0` vẫn nên giữ.
