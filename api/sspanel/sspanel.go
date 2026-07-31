@@ -738,21 +738,22 @@ func (c *APIClient) ParseUserListResponse(userInfoResponse *[]UserResponse) (*[]
 			deviceLimit = user.DeviceLimit
 		}
 
-		// If there is still device available, add the user
+		// Soft device limit only — never omit the user from the list.
+		// Omitting causes removeUsers on the next sync and drops Trojan mid-transfer
+		// (upload speed tests). Enforcement stays in GetUserBucket / DeviceLimit.
 		if deviceLimit > 0 && user.AliveIP > 0 {
 			lastOnline := 0
 			if v, ok := c.LastReportOnline[user.ID]; ok {
 				lastOnline = v
 			}
-			// If there are any available device.
 			if localDeviceLimit = deviceLimit - user.AliveIP + lastOnline; localDeviceLimit > 0 {
 				deviceLimit = localDeviceLimit
-				// If this backend server has reported any user in the last reporting period.
 			} else if lastOnline > 0 {
 				deviceLimit = lastOnline
-				// Remove this user.
 			} else {
-				continue
+				// Keep user; soft-limit to current online count (min 1) so new IPs
+				// are rejected without tearing down the existing session account.
+				deviceLimit = 1
 			}
 		}
 

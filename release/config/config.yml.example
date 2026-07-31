@@ -8,11 +8,11 @@ InboundConfigPath: # /etc/XrayR/custom_inbound.json
 OutboundConfigPath: # /etc/XrayR/custom_outbound.json
 ConnectionConfig:
   Handshake: 8
-  ConnIdle: 300
-  # Upload/download speed tests: keep one-way open long enough (was 5/8 → mid-test drops).
-  UplinkOnly: 300
-  DownlinkOnly: 300
-  BufferSize: 512
+  ConnIdle: 600
+  # Upload speed tests: keep one-way open; also avoid remove+add on limit sync.
+  UplinkOnly: 3600
+  DownlinkOnly: 3600
+  BufferSize: 1024
 Nodes:
   # DPanel Trojan (Hiddify). Đổi NodeType/Cert theo node thật.
   - PanelType: "SSpanel"

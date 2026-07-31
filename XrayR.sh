@@ -406,10 +406,10 @@ InboundConfigPath:
 OutboundConfigPath:
 ConnectionConfig:
   Handshake: 8
-  ConnIdle: 300
-  UplinkOnly: 300
-  DownlinkOnly: 300
-  BufferSize: 512
+  ConnIdle: 600
+  UplinkOnly: 3600
+  DownlinkOnly: 3600
+  BufferSize: 1024
 Nodes:
   - PanelType: "${PanelType}"
     ApiConfig:
@@ -472,10 +472,10 @@ patch_config_performance() {
 
     sed -i \
         -e 's/^  Handshake:.*/  Handshake: 8/' \
-        -e 's/^  ConnIdle:.*/  ConnIdle: 300/' \
-        -e 's/^  UplinkOnly:.*/  UplinkOnly: 300/' \
-        -e 's/^  DownlinkOnly:.*/  DownlinkOnly: 300/' \
-        -e 's/^  BufferSize:.*/  BufferSize: 512/' \
+        -e 's/^  ConnIdle:.*/  ConnIdle: 600/' \
+        -e 's/^  UplinkOnly:.*/  UplinkOnly: 3600/' \
+        -e 's/^  DownlinkOnly:.*/  DownlinkOnly: 3600/' \
+        -e 's/^  BufferSize:.*/  BufferSize: 1024/' \
         -e 's/^  Level:.*/  Level: warning/' \
         -e 's/^      UpdatePeriodic:.*/      UpdatePeriodic: 90/' \
         "${f}"

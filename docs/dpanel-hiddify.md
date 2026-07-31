@@ -21,25 +21,36 @@ Nếu log có `not a valid user` khi sync user → deploy panel branch có fix a
 
 ## Speed test bị rớt giữa chừng (upload)
 
-Nguyên nhân thường gặp: `ConnectionConfig.UplinkOnly: 5` — sau khi phía server half-close downlink, Xray chỉ giữ uplink ~5 giây rồi cắt (upload speed-test hay bị).
+**Không liên quan hết data.** Nguyên nhân phổ biến trên XrayR:
+
+1. **Sync user remove+add** — `compareUserList` cũ so sánh cả `SpeedLimit`/`DeviceLimit`. Mỗi chu kỳ sync (~60–90s) giá trị limit đổi nhẹ → XrayR xóa Trojan user rồi add lại → session upload đứt giữa chừng (log: `N user deleted, M user added`).
+2. **`alive_ip` omit** — user bị bỏ khỏi list → cũng remove.
+3. **`UplinkOnly` quá nhỏ** — half-close downlink rồi cắt uplink sớm.
+
+Bản fix: so sánh user theo UID/credential; chỉ update limiter khi đổi speed/IP limit; không omit user vì alive_ip; `UplinkOnly/DownlinkOnly: 3600`.
 
 ```yaml
 ConnectionConfig:
   Handshake: 8
-  ConnIdle: 300
-  UplinkOnly: 300    # không để 5
-  DownlinkOnly: 300  # không để 8
-  BufferSize: 512
+  ConnIdle: 600
+  UplinkOnly: 3600
+  DownlinkOnly: 3600
+  BufferSize: 1024
 ```
 
-Áp dụng nhanh trên node:
+Deploy node:
 
 ```bash
+git fetch origin cursor/hiddify-stable-node-7233
+# rebuild/reinstall XrayR binary từ branch này, rồi:
 sed -i \
-  -e 's/^  UplinkOnly:.*/  UplinkOnly: 300/' \
-  -e 's/^  DownlinkOnly:.*/  DownlinkOnly: 300/' \
+  -e 's/^  ConnIdle:.*/  ConnIdle: 600/' \
+  -e 's/^  UplinkOnly:.*/  UplinkOnly: 3600/' \
+  -e 's/^  DownlinkOnly:.*/  DownlinkOnly: 3600/' \
+  -e 's/^  BufferSize:.*/  BufferSize: 1024/' \
   /etc/XrayR/config.yml
 systemctl restart XrayR
+journalctl -u XrayR -f | egrep -i 'user deleted|not a valid user|Devices reach'
 ```
 
-Cũng kiểm tra: `SpeedLimit: 0`, `DeviceLimit: 0`, user còn đủ traffic, node không chạm `node_bandwidth_limit`.
+Khi upload: không còn `user deleted` định kỳ. `SpeedLimit: 0`, `DeviceLimit: 0` vẫn nên giữ.

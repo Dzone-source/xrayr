@@ -280,13 +280,13 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		}
 
 	} else {
-		var deleted, added []api.UserInfo
+		var deleted, added, updated []api.UserInfo
 		if usersChanged {
-			deleted, added = compareUserList(c.userList, newUserInfo)
+			deleted, added, updated = compareUserList(c.userList, newUserInfo)
 			if len(deleted) > 0 {
 				deletedEmail := make([]string, len(deleted))
 				for i, u := range deleted {
-					deletedEmail[i] = fmt.Sprintf("%s|%s|%d", c.Tag, u.Email, u.UID)
+					deletedEmail[i] = c.buildUserTag(&u)
 				}
 				err := c.removeUsers(deletedEmail, c.Tag)
 				if err != nil {
@@ -303,8 +303,15 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 					c.logger.Print(err)
 				}
 			}
+			// SpeedLimit / DeviceLimit-only changes: update limiter, do NOT remove
+			// the Trojan/VLESS account (remove+add drops active upload sessions).
+			if len(updated) > 0 {
+				if err := c.UpdateInboundLimiter(c.Tag, &updated); err != nil {
+					c.logger.Print(err)
+				}
+			}
 		}
-		c.logger.Printf("%d user deleted, %d user added", len(deleted), len(added))
+		c.logger.Printf("%d user deleted, %d user added, %d user limit-updated", len(deleted), len(added), len(updated))
 	}
 	c.userList = newUserInfo
 	return nil
@@ -429,42 +436,43 @@ func (c *Controller) addNewUser(userInfo *[]api.UserInfo, nodeInfo *api.NodeInfo
 	return nil
 }
 
-func compareUserList(old, new *[]api.UserInfo) (deleted, added []api.UserInfo) {
-	mSrc := make(map[api.UserInfo]byte) // 按源数组建索引
-	mAll := make(map[api.UserInfo]byte) // 源+目所有元素建索引
+// compareUserList diffs users by identity (UID + credentials).
+// SpeedLimit / DeviceLimit changes alone must NOT delete+re-add accounts —
+// that tears down active Trojan/VLESS sessions mid upload speed-test.
+func compareUserList(old, new *[]api.UserInfo) (deleted, added, updated []api.UserInfo) {
+	oldByUID := make(map[int]api.UserInfo, len(*old))
+	newByUID := make(map[int]api.UserInfo, len(*new))
+	for _, u := range *old {
+		oldByUID[u.UID] = u
+	}
+	for _, u := range *new {
+		newByUID[u.UID] = u
+	}
 
-	var set []api.UserInfo // 交集
-
-	// 1.源数组建立map
-	for _, v := range *old {
-		mSrc[v] = 0
-		mAll[v] = 0
-	}
-	// 2.目数组中，存不进去，即重复元素，所有存不进去的集合就是并集
-	for _, v := range *new {
-		l := len(mAll)
-		mAll[v] = 1
-		if l != len(mAll) { // 长度变化，即可以存
-			l = len(mAll)
-		} else { // 存不了，进并集
-			set = append(set, v)
-		}
-	}
-	// 3.遍历交集，在并集中找，找到就从并集中删，删完后就是补集（即并-交=所有变化的元素）
-	for _, v := range set {
-		delete(mAll, v)
-	}
-	// 4.此时，mall是补集，所有元素去源中找，找到就是删除的，找不到的必定能在目数组中找到，即新加的
-	for v := range mAll {
-		_, exist := mSrc[v]
-		if exist {
-			deleted = append(deleted, v)
-		} else {
-			added = append(added, v)
+	for uid, ou := range oldByUID {
+		if _, ok := newByUID[uid]; !ok {
+			deleted = append(deleted, ou)
 		}
 	}
 
-	return deleted, added
+	for uid, nu := range newByUID {
+		ou, ok := oldByUID[uid]
+		if !ok {
+			added = append(added, nu)
+			continue
+		}
+		// Credential / port / method change requires remove+add.
+		if ou.UUID != nu.UUID || ou.Passwd != nu.Passwd || ou.Port != nu.Port || ou.Method != nu.Method || ou.AlterID != nu.AlterID {
+			deleted = append(deleted, ou)
+			added = append(added, nu)
+			continue
+		}
+		if ou.SpeedLimit != nu.SpeedLimit || ou.DeviceLimit != nu.DeviceLimit {
+			updated = append(updated, nu)
+		}
+	}
+
+	return deleted, added, updated
 }
 
 func limitUser(c *Controller, user api.UserInfo, silentUsers *[]api.UserInfo) {
