@@ -60,25 +60,39 @@ func (c *Controller) buildVlessUser(userInfo *[]api.UserInfo) (users []*protocol
 }
 
 func (c *Controller) buildTrojanUser(userInfo *[]api.UserInfo) (users []*protocol.User) {
-	users = make([]*protocol.User, 0, len(*userInfo))
+	users = make([]*protocol.User, 0, len(*userInfo)*2)
 	for _, user := range *userInfo {
-		// SSPanel/DPanel Trojan password is normally UUID; some panels only fill passwd.
-		password := user.UUID
-		if password == "" {
-			password = user.Passwd
+		// DPanel/SSPanel clients may use UUID or passwd as Trojan password.
+		// Register both so "not a valid user" does not happen after sub/format mismatch.
+		passwords := make([]string, 0, 2)
+		seen := map[string]struct{}{}
+		for _, p := range []string{user.UUID, user.Passwd} {
+			if p == "" {
+				continue
+			}
+			if _, ok := seen[p]; ok {
+				continue
+			}
+			seen[p] = struct{}{}
+			passwords = append(passwords, p)
 		}
-		if password == "" {
+		if len(passwords) == 0 {
 			errors.LogError(context.Background(), "[UID: %d] trojan password empty (uuid and passwd)", user.UID)
 			continue
 		}
-		trojanAccount := &trojan.Account{
-			Password: password,
+		for i, password := range passwords {
+			email := c.buildUserTag(&user)
+			if i > 0 {
+				email = fmt.Sprintf("%s#p%d", email, i)
+			}
+			users = append(users, &protocol.User{
+				Level: 0,
+				Email: email,
+				Account: serial.ToTypedMessage(&trojan.Account{
+					Password: password,
+				}),
+			})
 		}
-		users = append(users, &protocol.User{
-			Level:   0,
-			Email:   c.buildUserTag(&user),
-			Account: serial.ToTypedMessage(trojanAccount),
-		})
 	}
 	return users
 }

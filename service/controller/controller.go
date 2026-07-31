@@ -217,6 +217,18 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		}
 	}
 
+	// Never wipe the in-memory Trojan/VLESS user set on a transient empty API
+	// response (bandwidth soft-offline, panel glitch). That produces mass
+	// "not a valid user" until the next good sync.
+	if usersChanged && newUserInfo != nil && len(*newUserInfo) == 0 && c.userList != nil && len(*c.userList) > 0 {
+		c.logger.Printf("GetUserList returned 0 users; keeping previous %d users", len(*c.userList))
+		newUserInfo = c.userList
+		usersChanged = false
+	}
+	if usersChanged && newUserInfo != nil {
+		c.logger.Printf("GetUserList: %d users", len(*newUserInfo))
+	}
+
 	// If nodeInfo changed
 	if nodeInfoChanged {
 		if !reflect.DeepEqual(c.nodeInfo, newNodeInfo) {
@@ -284,9 +296,14 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		if usersChanged {
 			deleted, added, updated = compareUserList(c.userList, newUserInfo)
 			if len(deleted) > 0 {
-				deletedEmail := make([]string, len(deleted))
-				for i, u := range deleted {
-					deletedEmail[i] = c.buildUserTag(&u)
+				deletedEmail := make([]string, 0, len(deleted)*2)
+				for _, u := range deleted {
+					tag := c.buildUserTag(&u)
+					deletedEmail = append(deletedEmail, tag)
+					// buildTrojanUser may also register passwd as tag#p1
+					if u.UUID != "" && u.Passwd != "" && u.UUID != u.Passwd {
+						deletedEmail = append(deletedEmail, tag+"#p1")
+					}
 				}
 				err := c.removeUsers(deletedEmail, c.Tag)
 				if err != nil {
