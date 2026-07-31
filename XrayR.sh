@@ -473,8 +473,8 @@ patch_config_performance() {
     sed -i \
         -e 's/^  Handshake:.*/  Handshake: 8/' \
         -e 's/^  ConnIdle:.*/  ConnIdle: 300/' \
-        -e 's/^  UplinkOnly:.*/  UplinkOnly: 5/' \
-        -e 's/^  DownlinkOnly:.*/  DownlinkOnly: 8/' \
+        -e 's/^  UplinkOnly:.*/  UplinkOnly: 300/' \
+        -e 's/^  DownlinkOnly:.*/  DownlinkOnly: 300/' \
         -e 's/^  BufferSize:.*/  BufferSize: 512/' \
         -e 's/^  Level:.*/  Level: warning/' \
         -e 's/^      UpdatePeriodic:.*/      UpdatePeriodic: 90/' \
