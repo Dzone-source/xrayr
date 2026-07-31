@@ -11,7 +11,11 @@ Node protocol: **Trojan** (`NodeType: Trojan`).
 | `CertMode: file/http/dns` | TLS bắt buộc cho Trojan |
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/cursor/hiddify-stable-node-7233/install.sh)
+# Cài / cập nhật kiểu XrayR cũ (tải zip release — không cần Go)
+bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/download/v0.9.12/install.sh) v0.9.12
+# hoặc nếu đã có script quản lý:
+# XrayR update v0.9.12
+
 nano /etc/XrayR/config.yml   # NodeType: Trojan + CertConfig
 systemctl restart XrayR
 journalctl -u XrayR -n 80 --no-pager
@@ -38,29 +42,26 @@ ConnectionConfig:
   BufferSize: 1024
 ```
 
-Deploy node (config tại **`/etc/xrayr`**):
+Deploy node (config **`/etc/XrayR`**, **không cần Go**):
 
 ```bash
-systemctl cat XrayR | grep -E 'ExecStart|WorkingDirectory'
+# 1) Cập nhật binary từ release (giữ /etc/XrayR/config.yml)
+XrayR update v0.9.12
+# nếu chưa có lệnh XrayR:
+# bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/download/v0.9.12/install.sh) v0.9.12
 
-cd /tmp
-rm -rf xrayr && git clone -b cursor/hiddify-stable-node-7233 https://github.com/Dzone-source/xrayr.git
-cd xrayr
-
-# Đổi đường dẫn binary cho khớp ExecStart trên máy bạn (ví dụ):
-go build -o /usr/local/XrayR/XrayR -ldflags "-s -w" -trimpath .
-# hoặc: go build -o /etc/xrayr/XrayR -ldflags "-s -w" -trimpath .
-
+# 2) Timeout / limit trong config hiện có
 sed -i \
   -e 's/^  ConnIdle:.*/  ConnIdle: 600/' \
   -e 's/^  UplinkOnly:.*/  UplinkOnly: 3600/' \
   -e 's/^  DownlinkOnly:.*/  DownlinkOnly: 3600/' \
   -e 's/^  BufferSize:.*/  BufferSize: 1024/' \
-  /etc/xrayr/config.yml
+  /etc/XrayR/config.yml
 
-grep -nE 'SpeedLimit|DeviceLimit|NodeType' /etc/xrayr/config.yml
+grep -nE 'SpeedLimit|DeviceLimit|NodeType|ApiHost' /etc/XrayR/config.yml
 systemctl restart XrayR
-journalctl -u XrayR -f | egrep -i 'GetUserList|user deleted|not a valid user'
+/usr/local/XrayR/XrayR version
+journalctl -u XrayR -f | egrep -i 'GetUserList|user deleted|not a valid user|Added'
 ```
 
-Phải thấy `GetUserList: N users` (N>0), không còn hàng loạt `not a valid user`. Giữ `SpeedLimit: 0`, `DeviceLimit: 0`.
+Phải thấy `GetUserList: N users` (N>0). Giữ `SpeedLimit: 0`, `DeviceLimit: 0`.
