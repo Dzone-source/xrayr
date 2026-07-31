@@ -14,8 +14,10 @@ func getDefaultConnectionConfig() *ConnectionConfig {
 	return &ConnectionConfig{
 		Handshake:    8,
 		ConnIdle:     300,
-		UplinkOnly:   5,
-		DownlinkOnly: 8,
+		// Long one-way windows: speed-test uploads keep sending after the peer
+		// half-closes downlink; UplinkOnly=5 cuts those tests mid-way.
+		UplinkOnly:   300,
+		DownlinkOnly: 300,
 		BufferSize:   512,
 	}
 }

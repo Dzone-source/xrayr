@@ -407,8 +407,8 @@ OutboundConfigPath:
 ConnectionConfig:
   Handshake: 8
   ConnIdle: 300
-  UplinkOnly: 5
-  DownlinkOnly: 8
+  UplinkOnly: 300
+  DownlinkOnly: 300
   BufferSize: 512
 Nodes:
   - PanelType: "${PanelType}"
