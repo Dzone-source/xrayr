@@ -12,8 +12,7 @@ Node protocol: **Trojan** (`NodeType: Trojan`).
 
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/Dzone-source/xrayr/cursor/hiddify-stable-node-7233/install.sh)
-# Config thường nằm tại /etc/xrayr (hoặc /etc/XrayR tùy bản cài)
-nano /etc/xrayr/config.yml   # NodeType: Trojan + CertConfig
+nano /etc/XrayR/config.yml   # NodeType: Trojan + CertConfig
 systemctl restart XrayR
 journalctl -u XrayR -n 80 --no-pager
 ```
@@ -42,34 +41,26 @@ ConnectionConfig:
 Deploy node (config tại **`/etc/xrayr`**):
 
 ```bash
-# Tìm binary đang chạy
 systemctl cat XrayR | grep -E 'ExecStart|WorkingDirectory'
-# thường: ExecStart=.../XrayR --config /etc/xrayr/config.yml
 
 cd /tmp
 rm -rf xrayr && git clone -b cursor/hiddify-stable-node-7233 https://github.com/Dzone-source/xrayr.git
 cd xrayr
-BIN=$(systemctl show -p ExecStart --value XrayR | awk '{print $1}')
-[[ -z "$BIN" || "$BIN" == "/"* ]] || BIN=/usr/local/XrayR/XrayR
-# nếu ExecStart dạng "/path/XrayR --config ..."
-BIN=$(systemctl show -p ExecStart --value XrayR | sed -E 's/^.*path=([^ ;]+).*/\1/; t; s/^ExecStart=//; s/ .*//')
-[[ -x "$BIN" ]] || BIN=/usr/local/XrayR/XrayR
 
-go build -o "$BIN" -ldflags "-s -w" -trimpath .
+# Đổi đường dẫn binary cho khớp ExecStart trên máy bạn (ví dụ):
+go build -o /usr/local/XrayR/XrayR -ldflags "-s -w" -trimpath .
+# hoặc: go build -o /etc/xrayr/XrayR -ldflags "-s -w" -trimpath .
 
-CFG=/etc/xrayr/config.yml
-[[ -f "$CFG" ]] || CFG=/etc/XrayR/config.yml
 sed -i \
   -e 's/^  ConnIdle:.*/  ConnIdle: 600/' \
   -e 's/^  UplinkOnly:.*/  UplinkOnly: 3600/' \
   -e 's/^  DownlinkOnly:.*/  DownlinkOnly: 3600/' \
   -e 's/^  BufferSize:.*/  BufferSize: 1024/' \
-  "$CFG"
-# SpeedLimit/DeviceLimit trong ApiConfig
-grep -nE 'SpeedLimit|DeviceLimit' "$CFG"
+  /etc/xrayr/config.yml
 
+grep -nE 'SpeedLimit|DeviceLimit|NodeType' /etc/xrayr/config.yml
 systemctl restart XrayR
 journalctl -u XrayR -f | egrep -i 'GetUserList|user deleted|not a valid user'
 ```
 
-Khi upload: không còn `user deleted` định kỳ; phải thấy `GetUserList: N users` với N>0. `SpeedLimit: 0`, `DeviceLimit: 0` vẫn nên giữ.
+Phải thấy `GetUserList: N users` (N>0), không còn hàng loạt `not a valid user`. Giữ `SpeedLimit: 0`, `DeviceLimit: 0`.
