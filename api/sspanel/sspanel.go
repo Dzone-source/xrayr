@@ -823,7 +823,7 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 		if tlsType == "tls" || tlsType == "xtls" {
 			enableTLS = true
 		}
-		if tlsType == "reality" || nodeConfig.EnableREALITY {
+		if tlsType == "reality" || nodeConfig.EnableREALITY.Bool() {
 			// REALITY does not use traditional TLS certificates.
 			enableTLS = false
 		}
@@ -841,7 +841,7 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 			transportProtocol = nodeConfig.Network // try to read transport protocol from config
 		}
 		// DPanel may set security explicitly; keep TLS on for Trojan unless REALITY.
-		if nodeConfig.EnableREALITY || nodeConfig.Security == "reality" {
+		if nodeConfig.EnableREALITY.Bool() || nodeConfig.Security == "reality" {
 			enableTLS = false
 		}
 	}
@@ -862,6 +862,17 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 		}
 	}
 
+	// Treat security=reality the same as enable_reality (common DPanel/Hiddify custom_config).
+	enableReality := nodeConfig.EnableREALITY.Bool() || nodeConfig.Security == "reality"
+	if enableReality {
+		enableTLS = false
+	}
+	// Default Vision flow for VLESS+REALITY/TLS TCP when panel omits flow (Hiddify-stable).
+	vlessFlow := nodeConfig.Flow
+	if enableVless && vlessFlow == "" && (transportProtocol == "" || transportProtocol == "tcp") {
+		vlessFlow = "xtls-rprx-vision"
+	}
+
 	// Create GeneralNodeInfo
 	nodeInfo := &api.NodeInfo{
 		NodeType:          c.NodeType,
@@ -874,11 +885,11 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 		Path:              nodeConfig.Path,
 		EnableTLS:         enableTLS,
 		EnableVless:       enableVless,
-		VlessFlow:         nodeConfig.Flow,
+		VlessFlow:         vlessFlow,
 		CypherMethod:      nodeConfig.Method,
 		ServiceName:       nodeConfig.Servicename,
 		Header:            nodeConfig.Header,
-		EnableREALITY:     nodeConfig.EnableREALITY,
+		EnableREALITY:     enableReality,
 		REALITYConfig:     realityConfig,
 	}
 

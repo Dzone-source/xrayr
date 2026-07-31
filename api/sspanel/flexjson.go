@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // FlexString unmarshals JSON string, number, or bool into a string.
@@ -64,4 +65,56 @@ func (f *FlexString) UnmarshalJSON(data []byte) error {
 
 func (f FlexString) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(f))
+}
+
+// FlexBool unmarshals JSON bool, number (0/1), or string ("true"/"1") into bool.
+// DPanel sometimes stores enable_reality as 1 / "1".
+type FlexBool bool
+
+func (f FlexBool) Bool() bool {
+	return bool(f)
+}
+
+func (f *FlexBool) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || bytes.Equal(data, []byte("null")) {
+		*f = false
+		return nil
+	}
+	switch data[0] {
+	case 't', 'f':
+		var b bool
+		if err := json.Unmarshal(data, &b); err != nil {
+			return err
+		}
+		*f = FlexBool(b)
+		return nil
+	case '"':
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		switch strings.ToLower(strings.TrimSpace(s)) {
+		case "1", "true", "yes", "on":
+			*f = true
+		default:
+			*f = false
+		}
+		return nil
+	default:
+		var n json.Number
+		if err := json.Unmarshal(data, &n); err != nil {
+			return fmt.Errorf("FlexBool: unsupported JSON value %s: %w", string(data), err)
+		}
+		i, err := n.Int64()
+		if err != nil {
+			return err
+		}
+		*f = FlexBool(i != 0)
+		return nil
+	}
+}
+
+func (f FlexBool) MarshalJSON() ([]byte, error) {
+	return json.Marshal(bool(f))
 }

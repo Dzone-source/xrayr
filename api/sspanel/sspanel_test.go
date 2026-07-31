@@ -222,6 +222,7 @@ func TestParseSSPanelNodeInfoReality(t *testing.T) {
 			"dest": "www.amazon.com:443",
 			"server_names": ["www.amazon.com"],
 			"private_key": "test-key",
+			"public_key": "test-pub",
 			"short_ids": ["", "0123456789abcdef"]
 		}
 	}`)
@@ -245,6 +246,73 @@ func TestParseSSPanelNodeInfoReality(t *testing.T) {
 	}
 	if nodeInfo.Port != 443 {
 		t.Fatalf("port=%d want 443", nodeInfo.Port)
+	}
+	if nodeInfo.VlessFlow != "xtls-rprx-vision" {
+		t.Fatalf("flow=%s", nodeInfo.VlessFlow)
+	}
+}
+
+func TestParseSSPanelNodeInfoRealitySecurityOnly(t *testing.T) {
+	// Hiddify/DPanel often set security=reality without enable_reality=true.
+	client := sspanel.New(&api.Config{
+		APIHost:  "http://127.0.0.1:667",
+		Key:      "123",
+		NodeID:   1,
+		NodeType: "V2ray",
+	})
+
+	custom := []byte(`{
+		"offset_port_node": 443,
+		"network": "tcp",
+		"security": "reality",
+		"enable_vless": 1,
+		"reality-opts": {
+			"dest": "www.microsoft.com:443",
+			"server_names": ["www.microsoft.com"],
+			"private_key": "pk",
+			"short_ids": ["ab"]
+		}
+	}`)
+
+	nodeInfo, err := client.ParseSSPanelNodeInfo(&sspanel.NodeInfoResponse{
+		CustomConfig: custom,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !nodeInfo.EnableREALITY {
+		t.Fatal("security=reality should enable REALITY")
+	}
+	if !nodeInfo.EnableVless {
+		t.Fatal("enable_vless=1 should enable VLESS")
+	}
+	if nodeInfo.VlessFlow != "xtls-rprx-vision" {
+		t.Fatalf("expected default vision flow, got %q", nodeInfo.VlessFlow)
+	}
+}
+
+func TestFlexBoolUnmarshal(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{`true`, true},
+		{`false`, false},
+		{`1`, true},
+		{`0`, false},
+		{`"1"`, true},
+		{`"true"`, true},
+		{`"0"`, false},
+		{`null`, false},
+	}
+	for _, tc := range cases {
+		var f sspanel.FlexBool
+		if err := json.Unmarshal([]byte(tc.in), &f); err != nil {
+			t.Fatalf("unmarshal %s: %v", tc.in, err)
+		}
+		if f.Bool() != tc.want {
+			t.Fatalf("%s -> %v want %v", tc.in, f.Bool(), tc.want)
+		}
 	}
 }
 

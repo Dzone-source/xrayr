@@ -13,14 +13,16 @@ ConnectionConfig:
   DownlinkOnly: 8
   BufferSize: 512
 Nodes:
-  - PanelType: "NewV2board" # SSpanel, NewV2board, PMpanel, Proxypanel, V2RaySocks, GoV2Panel, BunPanel
+  # DPanel / SSPanel-UIM (Hiddify-stable defaults). For Xboard UniProxy use PanelType: NewV2board.
+  - PanelType: "SSpanel"
     ApiConfig:
-      ApiHost: "https://example.com"
-      ApiKey: "your-api-key"
+      ApiHost: "https://panel.example.com"
+      ApiKey: "same-as-panel-muKey"
       NodeID: 1
       NodeType: V2ray # V2ray, Vmess, Vless, Shadowsocks, Trojan, Shadowsocks-Plugin
       Timeout: 30
-      EnableVless: false
+      # Prefer panel custom_config enable_vless; set true if all V2ray nodes are VLESS.
+      EnableVless: true
       VlessFlow: "xtls-rprx-vision"
       SpeedLimit: 0
       DeviceLimit: 0
@@ -29,7 +31,7 @@ Nodes:
     ControllerConfig:
       ListenIP: 0.0.0.0
       SendIP: 0.0.0.0
-      UpdatePeriodic: 90
+      UpdatePeriodic: 60
       EnableDNS: false
       DNSType: AsIs
       EnableProxyProtocol: false
@@ -48,10 +50,11 @@ Nodes:
         Timeout: 5
         Expiry: 60
       EnableFallback: false
-      DisableLocalREALITYConfig: false
+      # Panel owns REALITY keys via custom_config (Xboard-Node style).
+      DisableLocalREALITYConfig: true
       EnableREALITY: false
       CertConfig:
-        CertMode: none # none, file, http, tls, dns
+        CertMode: none # none for REALITY; file/http/tls/dns for classic TLS
         CertDomain: "node.example.com"
         CertFile: /etc/XrayR/cert/node.example.com.cert
         KeyFile: /etc/XrayR/cert/node.example.com.key
