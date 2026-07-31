@@ -1,5 +1,5 @@
 Log:
-  Level: warning # none, error, warning, info, debug
+  Level: warning
   AccessPath: # /etc/XrayR/access.log
   ErrorPath: # /etc/XrayR/error.log
 DnsConfigPath: # /etc/XrayR/dns.json
@@ -13,16 +13,15 @@ ConnectionConfig:
   DownlinkOnly: 8
   BufferSize: 512
 Nodes:
-  # DPanel / SSPanel-UIM (Hiddify-stable defaults). For Xboard UniProxy use PanelType: NewV2board.
+  # DPanel Trojan (Hiddify). Đổi NodeType/Cert theo node thật.
   - PanelType: "SSpanel"
     ApiConfig:
       ApiHost: "https://panel.example.com"
       ApiKey: "same-as-panel-muKey"
       NodeID: 1
-      NodeType: V2ray # V2ray, Vmess, Vless, Shadowsocks, Trojan, Shadowsocks-Plugin
+      NodeType: Trojan # Trojan | V2ray | Vmess | Vless | Shadowsocks
       Timeout: 30
-      # Prefer panel custom_config enable_vless; set true if all V2ray nodes are VLESS.
-      EnableVless: true
+      EnableVless: false
       VlessFlow: "xtls-rprx-vision"
       SpeedLimit: 0
       DeviceLimit: 0
@@ -50,13 +49,13 @@ Nodes:
         Timeout: 5
         Expiry: 60
       EnableFallback: false
-      # Panel owns REALITY keys via custom_config (Xboard-Node style).
       DisableLocalREALITYConfig: true
       EnableREALITY: false
       CertConfig:
-        CertMode: none # none for REALITY; file/http/tls/dns for classic TLS
+        # Trojan bắt buộc TLS. Dùng file / http / dns — không dùng none.
+        CertMode: file
         CertDomain: "node.example.com"
-        CertFile: /etc/XrayR/cert/node.example.com.cert
+        CertFile: /etc/XrayR/cert/node.example.com.crt
         KeyFile: /etc/XrayR/cert/node.example.com.key
         Provider: cloudflare
         Email: admin@example.com
