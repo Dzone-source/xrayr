@@ -104,13 +104,26 @@ func (c *Controller) Start() error {
 	// sync controller userList
 	c.userList = userInfo
 
+	if c.config.DisableSpeedLimit && userInfo != nil {
+		cleared := *userInfo
+		for i := range cleared {
+			cleared[i].SpeedLimit = 0
+		}
+		userInfo = &cleared
+		c.userList = userInfo
+	}
+
 	err = c.addNewUser(userInfo, newNodeInfo)
 	if err != nil {
 		return err
 	}
 
+	nodeSpeed := newNodeInfo.SpeedLimit
+	if c.config.DisableSpeedLimit {
+		nodeSpeed = 0
+	}
 	// Add Limiter
-	if err := c.AddInboundLimiter(c.Tag, newNodeInfo.SpeedLimit, userInfo, c.config.GlobalDeviceLimitConfig); err != nil {
+	if err := c.AddInboundLimiter(c.Tag, nodeSpeed, userInfo, c.config.GlobalDeviceLimitConfig); err != nil {
 		c.logger.Print(err)
 	}
 
@@ -217,9 +230,36 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		}
 	}
 
+	// Never wipe the in-memory Trojan/VLESS user set on a transient empty API
+	// response (bandwidth soft-offline, panel glitch). That produces mass
+	// "not a valid user" until the next good sync.
+	if usersChanged && newUserInfo != nil && len(*newUserInfo) == 0 && c.userList != nil && len(*c.userList) > 0 {
+		c.logger.Printf("GetUserList returned 0 users; keeping previous %d users", len(*c.userList))
+		newUserInfo = c.userList
+		usersChanged = false
+	}
+	if usersChanged && newUserInfo != nil {
+		limited := 0
+		for _, u := range *newUserInfo {
+			if u.SpeedLimit > 0 {
+				limited++
+			}
+		}
+		c.logger.Printf("GetUserList: %d users (%d with SpeedLimit>0)", len(*newUserInfo), limited)
+		if c.config.DisableSpeedLimit && limited > 0 {
+			cleared := *newUserInfo
+			for i := range cleared {
+				cleared[i].SpeedLimit = 0
+			}
+			newUserInfo = &cleared
+			c.logger.Print("DisableSpeedLimit: cleared all user SpeedLimit values")
+		}
+	}
+
 	// If nodeInfo changed
 	if nodeInfoChanged {
-		if !reflect.DeepEqual(c.nodeInfo, newNodeInfo) {
+		if nodeInfoRequiresInboundRebuild(c.nodeInfo, newNodeInfo) {
+			c.logger.Print("Node info structural change — rebuilding inbound (active sessions will drop)")
 			// Remove old tag
 			oldTag := c.Tag
 			err := c.removeOldTag(oldTag)
@@ -249,6 +289,15 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 				return nil
 			}
 		} else {
+			// SpeedLimit-only (or equivalent non-structural) updates must NOT
+			// tear down the inbound — that kills mid-upload speed tests.
+			if c.nodeInfo != nil && newNodeInfo != nil && c.nodeInfo.SpeedLimit != newNodeInfo.SpeedLimit {
+				c.logger.Printf("Node SpeedLimit %d → %d (limiter only, no inbound rebuild)", c.nodeInfo.SpeedLimit, newNodeInfo.SpeedLimit)
+				if err := c.UpdateNodeSpeedLimit(c.Tag, newNodeInfo.SpeedLimit); err != nil {
+					c.logger.Print(err)
+				}
+			}
+			c.nodeInfo = newNodeInfo
 			nodeInfoChanged = false
 		}
 	}
@@ -273,20 +322,29 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 			return nil
 		}
 
+		nodeSpeed := newNodeInfo.SpeedLimit
+		if c.config.DisableSpeedLimit {
+			nodeSpeed = 0
+		}
 		// Add Limiter
-		if err := c.AddInboundLimiter(c.Tag, newNodeInfo.SpeedLimit, newUserInfo, c.config.GlobalDeviceLimitConfig); err != nil {
+		if err := c.AddInboundLimiter(c.Tag, nodeSpeed, newUserInfo, c.config.GlobalDeviceLimitConfig); err != nil {
 			c.logger.Print(err)
 			return nil
 		}
 
 	} else {
-		var deleted, added []api.UserInfo
+		var deleted, added, updated []api.UserInfo
 		if usersChanged {
-			deleted, added = compareUserList(c.userList, newUserInfo)
+			deleted, added, updated = compareUserList(c.userList, newUserInfo)
 			if len(deleted) > 0 {
-				deletedEmail := make([]string, len(deleted))
-				for i, u := range deleted {
-					deletedEmail[i] = fmt.Sprintf("%s|%s|%d", c.Tag, u.Email, u.UID)
+				deletedEmail := make([]string, 0, len(deleted)*2)
+				for _, u := range deleted {
+					tag := c.buildUserTag(&u)
+					deletedEmail = append(deletedEmail, tag)
+					// buildTrojanUser may also register passwd as tag#p1
+					if u.UUID != "" && u.Passwd != "" && u.UUID != u.Passwd {
+						deletedEmail = append(deletedEmail, tag+"#p1")
+					}
 				}
 				err := c.removeUsers(deletedEmail, c.Tag)
 				if err != nil {
@@ -303,8 +361,15 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 					c.logger.Print(err)
 				}
 			}
+			// SpeedLimit / DeviceLimit-only changes: update limiter, do NOT remove
+			// the Trojan/VLESS account (remove+add drops active upload sessions).
+			if len(updated) > 0 {
+				if err := c.UpdateInboundLimiter(c.Tag, &updated); err != nil {
+					c.logger.Print(err)
+				}
+			}
 		}
-		c.logger.Printf("%d user deleted, %d user added", len(deleted), len(added))
+		c.logger.Printf("%d user deleted, %d user added, %d user limit-updated", len(deleted), len(added), len(updated))
 	}
 	c.userList = newUserInfo
 	return nil
@@ -429,42 +494,75 @@ func (c *Controller) addNewUser(userInfo *[]api.UserInfo, nodeInfo *api.NodeInfo
 	return nil
 }
 
-func compareUserList(old, new *[]api.UserInfo) (deleted, added []api.UserInfo) {
-	mSrc := make(map[api.UserInfo]byte) // 按源数组建索引
-	mAll := make(map[api.UserInfo]byte) // 源+目所有元素建索引
-
-	var set []api.UserInfo // 交集
-
-	// 1.源数组建立map
-	for _, v := range *old {
-		mSrc[v] = 0
-		mAll[v] = 0
+// nodeInfoRequiresInboundRebuild reports whether transport/TLS/port/identity
+// changed. SpeedLimit alone must not rebuild — RemoveHandler drops every
+// active upload/download on that tag.
+func nodeInfoRequiresInboundRebuild(old, new *api.NodeInfo) bool {
+	if old == nil || new == nil {
+		return true
 	}
-	// 2.目数组中，存不进去，即重复元素，所有存不进去的集合就是并集
-	for _, v := range *new {
-		l := len(mAll)
-		mAll[v] = 1
-		if l != len(mAll) { // 长度变化，即可以存
-			l = len(mAll)
-		} else { // 存不了，进并集
-			set = append(set, v)
+	// Trojan plain TCP TLS ignores Host (WS/CDN header only). Host flaps from
+	// panel custom_config must not tear down active upload speed tests.
+	hostMatters := !(old.NodeType == "Trojan" && (old.TransportProtocol == "" || old.TransportProtocol == "tcp"))
+	headerEqual := len(old.Header) == 0 && len(new.Header) == 0 || reflect.DeepEqual(old.Header, new.Header)
+
+	if old.NodeType != new.NodeType ||
+		old.NodeID != new.NodeID ||
+		old.Port != new.Port ||
+		old.AlterID != new.AlterID ||
+		old.TransportProtocol != new.TransportProtocol ||
+		(hostMatters && old.Host != new.Host) ||
+		old.Path != new.Path ||
+		old.EnableTLS != new.EnableTLS ||
+		old.EnableVless != new.EnableVless ||
+		old.VlessFlow != new.VlessFlow ||
+		old.CypherMethod != new.CypherMethod ||
+		old.ServiceName != new.ServiceName ||
+		old.EnableREALITY != new.EnableREALITY ||
+		!headerEqual ||
+		!reflect.DeepEqual(old.REALITYConfig, new.REALITYConfig) {
+		return true
+	}
+	return false
+}
+
+// compareUserList diffs users by identity (UID + credentials).
+// SpeedLimit / DeviceLimit changes alone must NOT delete+re-add accounts —
+// that tears down active Trojan/VLESS sessions mid upload speed-test.
+func compareUserList(old, new *[]api.UserInfo) (deleted, added, updated []api.UserInfo) {
+	oldByUID := make(map[int]api.UserInfo, len(*old))
+	newByUID := make(map[int]api.UserInfo, len(*new))
+	for _, u := range *old {
+		oldByUID[u.UID] = u
+	}
+	for _, u := range *new {
+		newByUID[u.UID] = u
+	}
+
+	for uid, ou := range oldByUID {
+		if _, ok := newByUID[uid]; !ok {
+			deleted = append(deleted, ou)
 		}
 	}
-	// 3.遍历交集，在并集中找，找到就从并集中删，删完后就是补集（即并-交=所有变化的元素）
-	for _, v := range set {
-		delete(mAll, v)
-	}
-	// 4.此时，mall是补集，所有元素去源中找，找到就是删除的，找不到的必定能在目数组中找到，即新加的
-	for v := range mAll {
-		_, exist := mSrc[v]
-		if exist {
-			deleted = append(deleted, v)
-		} else {
-			added = append(added, v)
+
+	for uid, nu := range newByUID {
+		ou, ok := oldByUID[uid]
+		if !ok {
+			added = append(added, nu)
+			continue
+		}
+		// Credential / port / method change requires remove+add.
+		if ou.UUID != nu.UUID || ou.Passwd != nu.Passwd || ou.Port != nu.Port || ou.Method != nu.Method || ou.AlterID != nu.AlterID {
+			deleted = append(deleted, ou)
+			added = append(added, nu)
+			continue
+		}
+		if ou.SpeedLimit != nu.SpeedLimit || ou.DeviceLimit != nu.DeviceLimit {
+			updated = append(updated, nu)
 		}
 	}
 
-	return deleted, added
+	return deleted, added, updated
 }
 
 func limitUser(c *Controller, user api.UserInfo, silentUsers *[]api.UserInfo) {

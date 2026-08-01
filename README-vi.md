@@ -65,19 +65,42 @@ Dự án này chỉ là học tập và phát triển và bảo trì cá nhân c
 
 ## Cài đặt phần mềm
 
-### Một cài đặt chính
+### Cài đặt một lệnh
 
+```bash
+bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh)
 ```
-wget -N https://raw.githubusercontent.com/XrayR-project/XrayR-release/master/install.sh && bash install.sh
+
+Hoặc:
+
+```bash
+wget -N https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh && bash install.sh
 ```
 
-### Sử dụng phần mềm triển khai Docker
+Sau khi cài xong:
+- Sửa cấu hình: `/etc/XrayR/config.yml`
+- Quản lý dịch vụ: gõ `XrayR` (menu) hoặc `XrayR start|stop|restart|log|status`
+- **Tối ưu mượt mà (BBR + buffer):** `XrayR optimize`
 
-[Hướng dẫn cài đặt thông qua Docker](https://xrayr-project.github.io/XrayR-doc/xrayr-xia-zai-he-an-zhuang/install/docker)
+Cài phiên bản cụ thể:
 
-### Hướng dẫn cài đặt
+```bash
+bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/latest/download/install.sh) v0.9.5
+```
 
-[Hướng dẫn cài đặt thủ công](https://xrayr-project.github.io/XrayR-doc/xrayr-xia-zai-he-an-zhuang/install/manual)
+### Triển khai bằng Docker
+
+```bash
+docker build -t xrayr .
+docker run -d --name xrayr --network host -v /etc/XrayR:/etc/XrayR xrayr
+```
+
+### Cài đặt thủ công
+
+1. Cài Go (>= 1.24)
+2. `git clone https://github.com/Dzone-source/xrayr.git && cd xrayr`
+3. `CGO_ENABLED=0 go build -o XrayR -trimpath -ldflags "-s -w -buildid="`
+4. Copy binary và file trong `release/config/` lên server, chạy với `--config /etc/XrayR/config.yml`
 
 ## Tệp cấu hình và hướng dẫn sử dụng chi tiết
 

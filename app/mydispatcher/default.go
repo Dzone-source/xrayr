@@ -167,8 +167,8 @@ func (d *DefaultDispatcher) getLink(ctx context.Context) (*transport.Link, *tran
 	}
 
 	if user != nil && len(user.Email) > 0 {
-		// Speed Limit and Device Limit
-		bucket, ok, reject := d.Limiter.GetUserBucket(sessionInbound.Tag, user.Email, sessionInbound.Source.Address.IP().String())
+		// Speed Limit and Device Limit (separate up/down buckets).
+		upBucket, downBucket, ok, reject := d.Limiter.GetUserBucket(sessionInbound.Tag, user.Email, sessionInbound.Source.Address.IP().String())
 		if reject {
 			errors.LogWarning(ctx, "Devices reach the limit: ", user.Email)
 			common.Close(outboundLink.Writer)
@@ -178,8 +178,12 @@ func (d *DefaultDispatcher) getLink(ctx context.Context) (*transport.Link, *tran
 			return nil, nil, newError("Devices reach the limit: ", user.Email)
 		}
 		if ok {
-			inboundLink.Writer = d.Limiter.RateWriter(inboundLink.Writer, bucket)
-			outboundLink.Writer = d.Limiter.RateWriter(outboundLink.Writer, bucket)
+			if upBucket != nil {
+				inboundLink.Writer = d.Limiter.RateWriter(inboundLink.Writer, upBucket)
+			}
+			if downBucket != nil {
+				outboundLink.Writer = d.Limiter.RateWriter(outboundLink.Writer, downBucket)
+			}
 		}
 
 		p := d.policy.ForLevel(user.Level)

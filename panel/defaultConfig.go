@@ -12,11 +12,13 @@ func getDefaultLogConfig() *LogConfig {
 
 func getDefaultConnectionConfig() *ConnectionConfig {
 	return &ConnectionConfig{
-		Handshake:    4,
-		ConnIdle:     30,
-		UplinkOnly:   2,
-		DownlinkOnly: 4,
-		BufferSize:   64,
+		Handshake:    8,
+		ConnIdle:     600,
+		// Long one-way windows: speed-test uploads keep sending after the peer
+		// half-closes downlink; small UplinkOnly cuts those tests mid-way.
+		UplinkOnly:   3600,
+		DownlinkOnly: 3600,
+		BufferSize:   1024,
 	}
 }
 

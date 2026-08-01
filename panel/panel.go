@@ -233,11 +233,27 @@ func (p *Panel) Close() {
 
 func parseConnectionConfig(c *ConnectionConfig) (policy *conf.Policy) {
 	connectionConfig := getDefaultConnectionConfig()
+	// Apply only non-zero overrides. viper leaves missing YAML keys as 0;
+	// r3labs/diff.Merge would then wipe safe defaults (e.g. UplinkOnly → 0),
+	// which closes the link right after download half-close and kills upload tests.
 	if c != nil {
-		if _, err := diff.Merge(connectionConfig, c, connectionConfig); err != nil {
-			log.Panicf("Read ConnectionConfig failed: %s", err)
+		if c.Handshake > 0 {
+			connectionConfig.Handshake = c.Handshake
+		}
+		if c.ConnIdle > 0 {
+			connectionConfig.ConnIdle = c.ConnIdle
+		}
+		if c.UplinkOnly > 0 {
+			connectionConfig.UplinkOnly = c.UplinkOnly
+		}
+		if c.DownlinkOnly > 0 {
+			connectionConfig.DownlinkOnly = c.DownlinkOnly
+		}
+		if c.BufferSize > 0 {
+			connectionConfig.BufferSize = c.BufferSize
 		}
 	}
+	normalizeConnectionConfig(connectionConfig)
 	policy = &conf.Policy{
 		StatsUserUplink:   true,
 		StatsUserDownlink: true,
@@ -249,4 +265,30 @@ func parseConnectionConfig(c *ConnectionConfig) (policy *conf.Policy) {
 	}
 
 	return
+}
+
+// normalizeConnectionConfig clamps legacy / unsafe timeouts.
+// Classic XrayR installs often keep UplinkOnly: 2~5 in /etc/XrayR/config.yml;
+// "XrayR update" replaces the binary but not that YAML, so upload speed tests
+// still disconnect mid-way after the download phase half-closes the link.
+func normalizeConnectionConfig(c *ConnectionConfig) {
+	const minOneWay = uint32(300)
+	if c.UplinkOnly < minOneWay {
+		log.Warnf("ConnectionConfig.UplinkOnly=%d too low for upload speed tests; clamping to 3600", c.UplinkOnly)
+		c.UplinkOnly = 3600
+	}
+	if c.DownlinkOnly < minOneWay {
+		log.Warnf("ConnectionConfig.DownlinkOnly=%d too low; clamping to 3600", c.DownlinkOnly)
+		c.DownlinkOnly = 3600
+	}
+	if c.ConnIdle < 60 {
+		log.Warnf("ConnectionConfig.ConnIdle=%d too low; clamping to 600", c.ConnIdle)
+		c.ConnIdle = 600
+	}
+	if c.Handshake == 0 {
+		c.Handshake = 8
+	}
+	if c.BufferSize <= 0 {
+		c.BufferSize = 1024
+	}
 }

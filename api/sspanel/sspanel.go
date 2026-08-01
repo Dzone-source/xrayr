@@ -28,21 +28,22 @@ var (
 
 // APIClient create a api client to the panel.
 type APIClient struct {
-	client              *resty.Client
-	APIHost             string
-	NodeID              int
-	Key                 string
-	NodeType            string
-	EnableVless         bool
-	VlessFlow           string
-	SpeedLimit          float64
-	DeviceLimit         int
-	DisableCustomConfig bool
-	LocalRuleList       []api.DetectRule
-	LastReportOnline    map[int]int
-	access              sync.Mutex
-	version             string
-	eTags               map[string]string
+	client                  *resty.Client
+	APIHost                 string
+	NodeID                  int
+	Key                     string
+	NodeType                string
+	EnableVless             bool
+	VlessFlow               string
+	SpeedLimit              float64
+	DeviceLimit             int
+	DisableCustomConfig     bool
+	LocalRuleList           []api.DetectRule
+	LastReportOnline        map[int]int
+	access                  sync.Mutex
+	version                 string
+	eTags                   map[string]string
+	statusReportUnsupported bool
 }
 
 // New create api instance
@@ -148,13 +149,16 @@ func (c *APIClient) parseResponse(res *resty.Response, path string, err error) (
 
 	if res.StatusCode() > 400 {
 		body := res.Body()
-		return nil, fmt.Errorf("request %s failed: %s, %v", c.assembleURL(path), string(body), err)
+		return nil, fmt.Errorf("request %s failed (HTTP %d): %s", c.assembleURL(path), res.StatusCode(), string(body))
 	}
 	response := res.Result().(*Response)
 
 	if response.Ret != 1 {
-		res, _ := json.Marshal(&response)
-		return nil, fmt.Errorf("ret %s invalid", string(res))
+		if response.Msg != "" {
+			return nil, fmt.Errorf("panel rejected request %s: %s (ret=%d). Check ApiKey, NodeID, node type on panel, and VPS IP whitelist", c.assembleURL(path), response.Msg, response.Ret)
+		}
+		resBody, _ := json.Marshal(&response)
+		return nil, fmt.Errorf("panel rejected request %s: ret %s invalid", c.assembleURL(path), string(resBody))
 	}
 	return response, nil
 }
@@ -187,20 +191,31 @@ func (c *APIClient) GetNodeInfo() (nodeInfo *api.NodeInfo, err error) {
 		return nil, fmt.Errorf("unmarshal %s failed: %s", reflect.TypeOf(nodeInfoResponse), err)
 	}
 
-	// determine ssPanel version, if disable custom config or version < 2021.11, then use old api
+	// determine ssPanel version
 	c.version = nodeInfoResponse.Version
-	var isExpired bool
-	if compareVersion(c.version, "2021.11") == -1 {
-		isExpired = true
-	}
+	hasCustomConfig := len(nodeInfoResponse.CustomConfig) > 0 && string(nodeInfoResponse.CustomConfig) != "null"
+	isExpired := c.version != "" && compareVersion(c.version, "2021.11") == -1
 
-	if c.DisableCustomConfig || isExpired {
+	// Prefer custom_config when present. Many modern panels omit/return empty version
+	// while still providing custom_config; forcing the legacy server-string parser
+	// panics or fails on short values like "vn1.example.com".
+	useCustomConfig := !c.DisableCustomConfig && hasCustomConfig
+	if useCustomConfig {
+		nodeInfo, err = c.ParseSSPanelNodeInfo(nodeInfoResponse)
+		if err != nil {
+			res, _ := json.Marshal(nodeInfoResponse)
+			return nil, fmt.Errorf("parse node info failed: %s, \nError: %s, \nPlease check the doc of custom_config for help: https://xrayr-project.github.io/XrayR-doc/dui-jie-sspanel/sspanel/sspanel_custom_config", string(res), err)
+		}
+	} else {
 		if isExpired {
 			log.Print("The panel version is expired, it is recommended to update immediately")
 		}
+		if !hasCustomConfig && !c.DisableCustomConfig {
+			log.Print("custom_config is empty, falling back to legacy server-string parser")
+		}
 
 		switch c.NodeType {
-		case "V2ray":
+		case "V2ray", "Vmess", "Vless":
 			nodeInfo, err = c.ParseV2rayNodeResponse(nodeInfoResponse)
 		case "Trojan":
 			nodeInfo, err = c.ParseTrojanNodeResponse(nodeInfoResponse)
@@ -210,12 +225,6 @@ func (c *APIClient) GetNodeInfo() (nodeInfo *api.NodeInfo, err error) {
 			nodeInfo, err = c.ParseSSPluginNodeResponse(nodeInfoResponse)
 		default:
 			return nil, fmt.Errorf("unsupported Node type: %s", c.NodeType)
-		}
-	} else {
-		nodeInfo, err = c.ParseSSPanelNodeInfo(nodeInfoResponse)
-		if err != nil {
-			res, _ := json.Marshal(nodeInfoResponse)
-			return nil, fmt.Errorf("parse node info failed: %s, \nError: %s, \nPlease check the doc of custom_config for help: https://xrayr-project.github.io/XrayR-doc/dui-jie-sspanel/sspanel/sspanel_custom_config", string(res), err)
 		}
 	}
 
@@ -265,24 +274,41 @@ func (c *APIClient) GetUserList() (UserList *[]api.UserInfo, err error) {
 
 // ReportNodeStatus reports the node status to the ssPanel
 func (c *APIClient) ReportNodeStatus(nodeStatus *api.NodeStatus) (err error) {
-	// Determine whether a status report is in need
-	if compareVersion(c.version, "2023.2") == -1 {
-		path := fmt.Sprintf("/mod_mu/nodes/%d/info", c.NodeID)
-		systemLoad := SystemLoad{
-			Uptime: strconv.FormatUint(nodeStatus.Uptime, 10),
-			Load:   fmt.Sprintf("%.2f %.2f %.2f", nodeStatus.CPU/100, nodeStatus.Mem/100, nodeStatus.Disk/100),
-		}
+	// Legacy ssPanel (< 2023.2) accepts POST /mod_mu/nodes/{id}/info for load/uptime.
+	// Modern forks (e.g. DPanel) often reject this endpoint with 405/Invalid request.
+	if c.statusReportUnsupported {
+		return nil
+	}
+	if c.version == "" || compareVersion(c.version, "2023.2") >= 0 {
+		return nil
+	}
 
-		res, err := c.client.R().
-			SetBody(systemLoad).
-			SetResult(&Response{}).
-			ForceContentType("application/json").
-			Post(path)
+	path := fmt.Sprintf("/mod_mu/nodes/%d/info", c.NodeID)
+	systemLoad := SystemLoad{
+		Uptime: strconv.FormatUint(nodeStatus.Uptime, 10),
+		Load:   fmt.Sprintf("%.2f %.2f %.2f", nodeStatus.CPU/100, nodeStatus.Mem/100, nodeStatus.Disk/100),
+	}
 
-		_, err = c.parseResponse(res, path, err)
-		if err != nil {
-			return err
+	res, err := c.client.R().
+		SetBody(systemLoad).
+		SetResult(&Response{}).
+		ForceContentType("application/json").
+		Post(path)
+
+	if res != nil && res.StatusCode() == 405 {
+		c.statusReportUnsupported = true
+		log.Print("Panel returned HTTP 405 for node status reporting; disabling legacy status report")
+		return nil
+	}
+
+	_, err = c.parseResponse(res, path, err)
+	if err != nil {
+		if strings.Contains(err.Error(), "Invalid request") {
+			c.statusReportUnsupported = true
+			log.Print("Panel rejected legacy node status report; disabling status report")
+			return nil
 		}
+		return err
 	}
 	return nil
 }
@@ -416,8 +442,12 @@ func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (
 	if nodeInfoResponse.RawServerString == "" {
 		return nil, fmt.Errorf("no server info in response")
 	}
-	// nodeInfo.RawServerString = strings.ToLower(nodeInfo.RawServerString)
+	// Expected legacy format:
+	// host;port;alterId;network;tls;path=/|host=xx|servicename=xx|headerType=xx
 	serverConf := strings.Split(nodeInfoResponse.RawServerString, ";")
+	if len(serverConf) < 6 {
+		return nil, fmt.Errorf("invalid legacy server string %q: need at least 6 ';' fields (host;port;alterId;network;tls;extra), got %d. Prefer filling custom_config on the panel", nodeInfoResponse.RawServerString, len(serverConf))
+	}
 
 	parsedPort, err := strconv.ParseInt(serverConf[1], 10, 32)
 	if err != nil {
@@ -447,7 +477,7 @@ func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (
 	for _, item := range extraServerConf {
 		conf := strings.Split(item, "=")
 		key := conf[0]
-		if key == "" {
+		if key == "" || len(conf) < 2 {
 			continue
 		}
 		value := conf[1]
@@ -550,7 +580,13 @@ func (c *APIClient) ParseSSPluginNodeResponse(nodeInfoResponse *NodeInfoResponse
 	var path, host, transportProtocol string
 	var speedLimit uint64 = 0
 
+	if nodeInfoResponse.RawServerString == "" {
+		return nil, fmt.Errorf("no server info in response")
+	}
 	serverConf := strings.Split(nodeInfoResponse.RawServerString, ";")
+	if len(serverConf) < 6 {
+		return nil, fmt.Errorf("invalid legacy server string %q: need at least 6 ';' fields, got %d", nodeInfoResponse.RawServerString, len(serverConf))
+	}
 	parsedPort, err := strconv.ParseInt(serverConf[1], 10, 32)
 	if err != nil {
 		return nil, err
@@ -576,7 +612,7 @@ func (c *APIClient) ParseSSPluginNodeResponse(nodeInfoResponse *NodeInfoResponse
 	for _, item := range extraServerConf {
 		conf := strings.Split(item, "=")
 		key := conf[0]
-		if key == "" {
+		if key == "" || len(conf) < 2 {
 			continue
 		}
 		value := conf[1]
@@ -642,13 +678,16 @@ func (c *APIClient) ParseTrojanNodeResponse(nodeInfoResponse *NodeInfoResponse) 
 	port := uint32(parsedPort)
 
 	serverConf := strings.Split(nodeInfoResponse.RawServerString, ";")
+	if len(serverConf) < 2 {
+		return nil, fmt.Errorf("invalid legacy trojan server string %q", nodeInfoResponse.RawServerString)
+	}
 	extraServerConf := strings.Split(serverConf[1], "|")
 	transportProtocol = "tcp"
 	serviceName = ""
 	for _, item := range extraServerConf {
 		conf := strings.Split(item, "=")
 		key := conf[0]
-		if key == "" {
+		if key == "" || len(conf) < 2 {
 			continue
 		}
 		value := conf[1]
@@ -699,21 +738,22 @@ func (c *APIClient) ParseUserListResponse(userInfoResponse *[]UserResponse) (*[]
 			deviceLimit = user.DeviceLimit
 		}
 
-		// If there is still device available, add the user
+		// Soft device limit only — never omit the user from the list.
+		// Omitting causes removeUsers on the next sync and drops Trojan mid-transfer
+		// (upload speed tests). Enforcement stays in GetUserBucket / DeviceLimit.
 		if deviceLimit > 0 && user.AliveIP > 0 {
 			lastOnline := 0
 			if v, ok := c.LastReportOnline[user.ID]; ok {
 				lastOnline = v
 			}
-			// If there are any available device.
 			if localDeviceLimit = deviceLimit - user.AliveIP + lastOnline; localDeviceLimit > 0 {
 				deviceLimit = localDeviceLimit
-				// If this backend server has reported any user in the last reporting period.
 			} else if lastOnline > 0 {
 				deviceLimit = lastOnline
-				// Remove this user.
 			} else {
-				continue
+				// Keep user; soft-limit to current online count (min 1) so new IPs
+				// are rejected without tearing down the existing session account.
+				deviceLimit = 1
 			}
 		}
 
@@ -763,9 +803,13 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 		speedLimit = uint64((nodeInfoResponse.SpeedLimit * 1000000) / 8)
 	}
 
-	parsedPort, err := strconv.ParseInt(nodeConfig.OffsetPortNode, 10, 32)
+	portStr := nodeConfig.OffsetPortNode.String()
+	if portStr == "" {
+		return nil, errors.New("custom_config.offset_port_node is empty")
+	}
+	parsedPort, err := strconv.ParseInt(portStr, 10, 32)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid offset_port_node %q: %w", portStr, err)
 	}
 
 	port := uint32(parsedPort)
@@ -773,15 +817,20 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 	switch c.NodeType {
 	case "Shadowsocks":
 		transportProtocol = "tcp"
-	case "V2ray":
+	case "V2ray", "Vmess", "Vless":
 		transportProtocol = nodeConfig.Network
 
 		tlsType := nodeConfig.Security
 		if tlsType == "tls" || tlsType == "xtls" {
 			enableTLS = true
 		}
+		if tlsType == "reality" || nodeConfig.EnableREALITY.Bool() {
+			// REALITY does not use traditional TLS certificates.
+			enableTLS = false
+		}
 
-		if nodeConfig.EnableVless == "1" {
+		enableVlessVal := nodeConfig.EnableVless.String()
+		if enableVlessVal == "1" || enableVlessVal == "true" || c.NodeType == "Vless" || c.EnableVless {
 			enableVless = true
 		}
 	case "Trojan":
@@ -791,6 +840,10 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 		// Select transport protocol
 		if nodeConfig.Network != "" {
 			transportProtocol = nodeConfig.Network // try to read transport protocol from config
+		}
+		// DPanel may set security explicitly; keep TLS on for Trojan unless REALITY.
+		if nodeConfig.EnableREALITY.Bool() || nodeConfig.Security == "reality" {
+			enableTLS = false
 		}
 	}
 
@@ -810,6 +863,17 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 		}
 	}
 
+	// Treat security=reality the same as enable_reality (common DPanel/Hiddify custom_config).
+	enableReality := nodeConfig.EnableREALITY.Bool() || nodeConfig.Security == "reality"
+	if enableReality {
+		enableTLS = false
+	}
+	// Default Vision flow for VLESS+REALITY/TLS TCP when panel omits flow (Hiddify-stable).
+	vlessFlow := nodeConfig.Flow
+	if enableVless && vlessFlow == "" && (transportProtocol == "" || transportProtocol == "tcp") {
+		vlessFlow = "xtls-rprx-vision"
+	}
+
 	// Create GeneralNodeInfo
 	nodeInfo := &api.NodeInfo{
 		NodeType:          c.NodeType,
@@ -822,11 +886,11 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 		Path:              nodeConfig.Path,
 		EnableTLS:         enableTLS,
 		EnableVless:       enableVless,
-		VlessFlow:         nodeConfig.Flow,
+		VlessFlow:         vlessFlow,
 		CypherMethod:      nodeConfig.Method,
 		ServiceName:       nodeConfig.Servicename,
 		Header:            nodeConfig.Header,
-		EnableREALITY:     nodeConfig.EnableREALITY,
+		EnableREALITY:     enableReality,
 		REALITYConfig:     realityConfig,
 	}
 

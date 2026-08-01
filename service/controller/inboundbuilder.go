@@ -38,10 +38,11 @@ func InboundBuilder(config *Config, nodeInfo *api.NodeInfo, tag string) (*core.I
 	inboundDetourConfig.PortList = portList
 	// Build Tag
 	inboundDetourConfig.Tag = tag
-	// SniffingConfig
+	// SniffingConfig — match Hiddify-Manager (no fakedns; fakedns mistags
+	// speed-test destinations and drops parallel upload streams).
 	sniffingConfig := &conf.SniffingConfig{
 		Enabled:      true,
-		DestOverride: &conf.StringList{"http", "tls", "quic", "fakedns"},
+		DestOverride: &conf.StringList{"http", "tls", "quic"},
 	}
 	if config.DisableSniffing {
 		sniffingConfig.Enabled = false
@@ -242,10 +243,15 @@ func InboundBuilder(config *Config, nodeInfo *api.NodeInfo, tag string) (*core.I
 		streamSetting.TLSSettings = tlsSettings
 	}
 
-	// Support ProxyProtocol for any transport protocol
-	if networkType != "tcp" && networkType != "ws" && config.EnableProxyProtocol {
+	// sockopt: Hiddify-Manager always sets tcpFastOpen on Trojan/VLESS TCP.
+	// EnableTFO defaults on for tcp/ws unless DisableSniffing-style opt-out via EnableTFO=false
+	// is not distinguishable with bool — so enable TFO for tcp/ws always; ProxyProtocol optional.
+	if networkType == "tcp" || networkType == "ws" || config.EnableProxyProtocol || config.EnableTFO {
 		sockoptConfig := &conf.SocketConfig{
-			AcceptProxyProtocol: config.EnableProxyProtocol,
+			TFO: true,
+		}
+		if config.EnableProxyProtocol {
+			sockoptConfig.AcceptProxyProtocol = true
 		}
 		streamSetting.SocketSettings = sockoptConfig
 	}

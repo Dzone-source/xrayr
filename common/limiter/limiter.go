@@ -28,11 +28,19 @@ type UserInfo struct {
 	DeviceLimit int
 }
 
+// dirBuckets holds independent up/down token buckets for one user email.
+// Sharing a single bucket made download speed-tests drain tokens and stall upload.
+type dirBuckets struct {
+	up   *rate.Limiter
+	down *rate.Limiter
+	bps  uint64
+}
+
 type InboundInfo struct {
 	Tag            string
 	NodeSpeedLimit uint64
 	UserInfo       *sync.Map // Key: Email value: UserInfo
-	BucketHub      *sync.Map // key: Email, value: *rate.Limiter
+	BucketHub      *sync.Map // key: Email, value: *dirBuckets
 	UserOnlineIP   *sync.Map // Key: Email, value: {Key: IP, value: UID}
 	GlobalLimit    struct {
 		config         *GlobalDeviceLimitConfig
@@ -106,22 +114,48 @@ func (l *Limiter) UpdateInboundLimiter(tag string, updatedUserList *[]api.UserIn
 				SpeedLimit:  u.SpeedLimit,
 				DeviceLimit: u.DeviceLimit,
 			})
-			// Update old limiter bucket
 			limit := determineRate(inboundInfo.NodeSpeedLimit, u.SpeedLimit)
-			if limit > 0 {
-				if bucket, ok := inboundInfo.BucketHub.Load(fmt.Sprintf("%s|%s|%d", tag, u.Email, u.UID)); ok {
-					limiter := bucket.(*rate.Limiter)
-					limiter.SetLimit(rate.Limit(limit))
-					limiter.SetBurst(int(limit))
-				}
-			} else {
-				inboundInfo.BucketHub.Delete(fmt.Sprintf("%s|%s|%d", tag, u.Email, u.UID))
-			}
+			key := fmt.Sprintf("%s|%s|%d", tag, u.Email, u.UID)
+			storeDirBuckets(inboundInfo.BucketHub, key, limit)
 		}
 	} else {
 		return fmt.Errorf("no such inbound in limiter: %s", tag)
 	}
 	return nil
+}
+
+// UpdateNodeSpeedLimit updates inbound node rate without recreating the handler.
+func (l *Limiter) UpdateNodeSpeedLimit(tag string, nodeSpeedLimit uint64) error {
+	if value, ok := l.InboundInfo.Load(tag); ok {
+		inboundInfo := value.(*InboundInfo)
+		inboundInfo.NodeSpeedLimit = nodeSpeedLimit
+		inboundInfo.UserInfo.Range(func(key, value interface{}) bool {
+			u := value.(UserInfo)
+			email := key.(string)
+			limit := determineRate(nodeSpeedLimit, u.SpeedLimit)
+			storeDirBuckets(inboundInfo.BucketHub, email, limit)
+			return true
+		})
+		return nil
+	}
+	return fmt.Errorf("no such inbound in limiter: %s", tag)
+}
+
+func storeDirBuckets(hub *sync.Map, key string, limit uint64) {
+	if limit == 0 {
+		hub.Delete(key)
+		return
+	}
+	if v, ok := hub.Load(key); ok {
+		if b, ok := v.(*dirBuckets); ok && b.bps == limit {
+			return
+		}
+	}
+	hub.Store(key, &dirBuckets{
+		up:   newSpeedLimiter(limit),
+		down: newSpeedLimiter(limit),
+		bps:  limit,
+	})
 }
 
 func (l *Limiter) DeleteInboundLimiter(tag string) error {
@@ -134,7 +168,7 @@ func (l *Limiter) GetOnlineDevice(tag string) (*[]api.OnlineUser, error) {
 
 	if value, ok := l.InboundInfo.Load(tag); ok {
 		inboundInfo := value.(*InboundInfo)
-		// Clear Speed Limiter bucket for users who are not online
+		// Drop cached speed rates for users who are not online
 		inboundInfo.BucketHub.Range(func(key, value interface{}) bool {
 			email := key.(string)
 			if _, exists := inboundInfo.UserOnlineIP.Load(email); !exists {
@@ -161,7 +195,8 @@ func (l *Limiter) GetOnlineDevice(tag string) (*[]api.OnlineUser, error) {
 	return &onlineUser, nil
 }
 
-func (l *Limiter) GetUserBucket(tag string, email string, ip string) (limiter *rate.Limiter, SpeedLimit bool, Reject bool) {
+// GetUserBucket returns uplink and downlink limiters (may be nil when unlimited).
+func (l *Limiter) GetUserBucket(tag string, email string, ip string) (up *rate.Limiter, down *rate.Limiter, SpeedLimit bool, Reject bool) {
 	if value, ok := l.InboundInfo.Load(tag); ok {
 		var (
 			userLimit        uint64 = 0
@@ -193,7 +228,7 @@ func (l *Limiter) GetUserBucket(tag string, email string, ip string) (limiter *r
 				})
 				if counter > deviceLimit && deviceLimit > 0 {
 					ipMap.Delete(ip)
-					return nil, false, true
+					return nil, nil, false, true
 				}
 			}
 		}
@@ -201,27 +236,24 @@ func (l *Limiter) GetUserBucket(tag string, email string, ip string) (limiter *r
 		// GlobalLimit
 		if inboundInfo.GlobalLimit.config != nil && inboundInfo.GlobalLimit.config.Enable {
 			if reject := globalLimit(inboundInfo, email, uid, ip, deviceLimit); reject {
-				return nil, false, true
+				return nil, nil, false, true
 			}
 		}
 
-		// Speed limit
-		limit := determineRate(nodeLimit, userLimit) // Determine the speed limit rate
-		if limit > 0 {
-			limiter := rate.NewLimiter(rate.Limit(limit), int(limit)) // Byte/s
-			if v, ok := inboundInfo.BucketHub.LoadOrStore(email, limiter); ok {
-				bucket := v.(*rate.Limiter)
-				return bucket, true, false
-			} else {
-				return limiter, true, false
-			}
-		} else {
-			return nil, false, false
+		limit := determineRate(nodeLimit, userLimit)
+		if limit == 0 {
+			inboundInfo.BucketHub.Delete(email)
+			return nil, nil, false, false
 		}
-	} else {
-		errors.LogDebug(context.Background(), "Get Inbound Limiter information failed")
-		return nil, false, false
+		storeDirBuckets(inboundInfo.BucketHub, email, limit)
+		if v, ok := inboundInfo.BucketHub.Load(email); ok {
+			b := v.(*dirBuckets)
+			return b.up, b.down, true, false
+		}
+		return newSpeedLimiter(limit), newSpeedLimiter(limit), true, false
 	}
+	errors.LogDebug(context.Background(), "Get Inbound Limiter information failed")
+	return nil, nil, false, false
 }
 
 // Global device limit

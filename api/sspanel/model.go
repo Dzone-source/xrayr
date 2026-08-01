@@ -16,22 +16,23 @@ type NodeInfoResponse struct {
 }
 
 type CustomConfig struct {
-	OffsetPortNode string          `json:"offset_port_node"`
+	// OffsetPortNode / AllowInsecure / EnableVless accept string|number|bool from DPanel.
+	OffsetPortNode FlexString      `json:"offset_port_node"`
 	Host           string          `json:"host"`
 	Method         string          `json:"method"`
 	TLS            string          `json:"tls"`
-	EnableVless    string          `json:"enable_vless"`
+	EnableVless    FlexString      `json:"enable_vless"`
 	Network        string          `json:"network"`
 	Security       string          `json:"security"`
 	Path           string          `json:"path"`
 	VerifyCert     bool            `json:"verify_cert"`
 	Obfs           string          `json:"obfs"`
 	Header         json.RawMessage `json:"header"`
-	AllowInsecure  string          `json:"allow_insecure"`
+	AllowInsecure  FlexString      `json:"allow_insecure"`
 	Servicename    string          `json:"servicename"`
 	EnableXtls     string          `json:"enable_xtls"`
 	Flow           string          `json:"flow"`
-	EnableREALITY  bool            `json:"enable_reality"`
+	EnableREALITY  FlexBool        `json:"enable_reality"`
 	RealityOpts    *REALITYConfig  `json:"reality-opts"`
 }
 
@@ -50,6 +51,7 @@ type UserResponse struct {
 // Response is the common response
 type Response struct {
 	Ret  uint            `json:"ret"`
+	Msg  string          `json:"msg"`
 	Data json.RawMessage `json:"data"`
 }
 
@@ -92,6 +94,7 @@ type REALITYConfig struct {
 	ProxyProtocolVer uint64   `json:"proxy_protocol_ver,omitempty"`
 	ServerNames      []string `json:"server_names,omitempty"`
 	PrivateKey       string   `json:"private_key,omitempty"`
+	PublicKey        string   `json:"public_key,omitempty"` // client-side only; ignored by XrayR inbound
 	MinClientVer     string   `json:"min_client_ver,omitempty"`
 	MaxClientVer     string   `json:"max_client_ver,omitempty"`
 	MaxTimeDiff      uint64   `json:"max_time_diff,omitempty"`

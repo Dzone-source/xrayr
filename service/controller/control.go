@@ -142,6 +142,10 @@ func (c *Controller) UpdateInboundLimiter(tag string, updatedUserList *[]api.Use
 	return err
 }
 
+func (c *Controller) UpdateNodeSpeedLimit(tag string, nodeSpeedLimit uint64) error {
+	return c.dispatcher.Limiter.UpdateNodeSpeedLimit(tag, nodeSpeedLimit)
+}
+
 func (c *Controller) DeleteInboundLimiter(tag string) error {
 	err := c.dispatcher.Limiter.DeleteInboundLimiter(tag)
 	return err
