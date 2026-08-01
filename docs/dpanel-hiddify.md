@@ -12,9 +12,9 @@ Node protocol: **Trojan** (`NodeType: Trojan`).
 
 ```bash
 # Cài / cập nhật kiểu XrayR cũ (tải zip release — không cần Go)
-bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/download/v0.9.12/install.sh) v0.9.12
+bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/download/v0.9.13/install.sh) v0.9.13
 # hoặc nếu đã có script quản lý:
-# XrayR update v0.9.12
+# XrayR update v0.9.13
 
 nano /etc/XrayR/config.yml   # NodeType: Trojan + CertConfig
 systemctl restart XrayR
@@ -45,23 +45,17 @@ ConnectionConfig:
 Deploy node (config **`/etc/XrayR`**, **không cần Go**):
 
 ```bash
-# 1) Cập nhật binary từ release (giữ /etc/XrayR/config.yml)
-XrayR update v0.9.12
-# nếu chưa có lệnh XrayR:
-# bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/download/v0.9.12/install.sh) v0.9.12
+# v0.9.13+: update zip + tự patch UplinkOnly/DownlinkOnly nếu config cũ còn 2~5
+XrayR update v0.9.13
+# hoặc:
+# bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/download/v0.9.13/install.sh) v0.9.13
 
-# 2) Timeout / limit trong config hiện có
-sed -i \
-  -e 's/^  ConnIdle:.*/  ConnIdle: 600/' \
-  -e 's/^  UplinkOnly:.*/  UplinkOnly: 3600/' \
-  -e 's/^  DownlinkOnly:.*/  DownlinkOnly: 3600/' \
-  -e 's/^  BufferSize:.*/  BufferSize: 1024/' \
-  /etc/XrayR/config.yml
+# Kiểm tra config (bắt buộc UplinkOnly/DownlinkOnly >= 300; binary cũng clamp)
+grep -nE 'UplinkOnly|DownlinkOnly|ConnIdle|SpeedLimit|DeviceLimit|NodeType' /etc/XrayR/config.yml
+# Kỳ vọng: UplinkOnly: 3600, DownlinkOnly: 3600, SpeedLimit: 0, DeviceLimit: 0
 
-grep -nE 'SpeedLimit|DeviceLimit|NodeType|ApiHost' /etc/XrayR/config.yml
 systemctl restart XrayR
-/usr/local/XrayR/XrayR version
-journalctl -u XrayR -f | egrep -i 'GetUserList|user deleted|not a valid user|Added'
+journalctl -u XrayR -n 50 --no-pager | egrep -i 'UplinkOnly|clamping|GetUserList|rebuild|user deleted|not a valid user'
 ```
 
-Phải thấy `GetUserList: N users` (N>0). Giữ `SpeedLimit: 0`, `DeviceLimit: 0`.
+Upload speedtest vẫn đứt nếu `/etc/XrayR/config.yml` còn `UplinkOnly: 5` (update binary không sửa YAML trên bản < 0.9.13). Phải thấy `GetUserList: N users` (N>0), **không** thấy `rebuilding inbound` mỗi chu kỳ sync.

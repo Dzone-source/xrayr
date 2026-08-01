@@ -37,6 +37,24 @@ func TestCompareUserListCredentialChangeRemoves(t *testing.T) {
 	}
 }
 
+func TestNodeInfoRequiresInboundRebuildIgnoresSpeedLimit(t *testing.T) {
+	old := &api.NodeInfo{
+		NodeType: "Trojan", NodeID: 1, Port: 443, TransportProtocol: "tcp",
+		EnableTLS: true, SpeedLimit: 0,
+	}
+	new := &api.NodeInfo{
+		NodeType: "Trojan", NodeID: 1, Port: 443, TransportProtocol: "tcp",
+		EnableTLS: true, SpeedLimit: 1250000,
+	}
+	if nodeInfoRequiresInboundRebuild(old, new) {
+		t.Fatal("SpeedLimit-only change must not rebuild inbound")
+	}
+	new.Port = 8443
+	if !nodeInfoRequiresInboundRebuild(old, new) {
+		t.Fatal("Port change must rebuild inbound")
+	}
+}
+
 func TestCompareUserListAddAndDelete(t *testing.T) {
 	old := &[]api.UserInfo{
 		{UID: 1, UUID: "a"},

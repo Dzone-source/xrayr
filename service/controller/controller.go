@@ -231,7 +231,8 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 
 	// If nodeInfo changed
 	if nodeInfoChanged {
-		if !reflect.DeepEqual(c.nodeInfo, newNodeInfo) {
+		if nodeInfoRequiresInboundRebuild(c.nodeInfo, newNodeInfo) {
+			c.logger.Print("Node info structural change — rebuilding inbound (active sessions will drop)")
 			// Remove old tag
 			oldTag := c.Tag
 			err := c.removeOldTag(oldTag)
@@ -261,6 +262,15 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 				return nil
 			}
 		} else {
+			// SpeedLimit-only (or equivalent non-structural) updates must NOT
+			// tear down the inbound — that kills mid-upload speed tests.
+			if c.nodeInfo != nil && newNodeInfo != nil && c.nodeInfo.SpeedLimit != newNodeInfo.SpeedLimit {
+				c.logger.Printf("Node SpeedLimit %d → %d (limiter only, no inbound rebuild)", c.nodeInfo.SpeedLimit, newNodeInfo.SpeedLimit)
+				if err := c.UpdateNodeSpeedLimit(c.Tag, newNodeInfo.SpeedLimit); err != nil {
+					c.logger.Print(err)
+				}
+			}
+			c.nodeInfo = newNodeInfo
 			nodeInfoChanged = false
 		}
 	}
@@ -451,6 +461,33 @@ func (c *Controller) addNewUser(userInfo *[]api.UserInfo, nodeInfo *api.NodeInfo
 	}
 	c.logger.Printf("Added %d new users", len(*userInfo))
 	return nil
+}
+
+// nodeInfoRequiresInboundRebuild reports whether transport/TLS/port/identity
+// changed. SpeedLimit alone must not rebuild — RemoveHandler drops every
+// active upload/download on that tag.
+func nodeInfoRequiresInboundRebuild(old, new *api.NodeInfo) bool {
+	if old == nil || new == nil {
+		return true
+	}
+	if old.NodeType != new.NodeType ||
+		old.NodeID != new.NodeID ||
+		old.Port != new.Port ||
+		old.AlterID != new.AlterID ||
+		old.TransportProtocol != new.TransportProtocol ||
+		old.Host != new.Host ||
+		old.Path != new.Path ||
+		old.EnableTLS != new.EnableTLS ||
+		old.EnableVless != new.EnableVless ||
+		old.VlessFlow != new.VlessFlow ||
+		old.CypherMethod != new.CypherMethod ||
+		old.ServiceName != new.ServiceName ||
+		old.EnableREALITY != new.EnableREALITY ||
+		!reflect.DeepEqual(old.Header, new.Header) ||
+		!reflect.DeepEqual(old.REALITYConfig, new.REALITYConfig) {
+		return true
+	}
+	return false
 }
 
 // compareUserList diffs users by identity (UID + credentials).

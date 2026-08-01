@@ -236,6 +236,25 @@ install_manage_script() {
     echo -e "${yellow}Không tải được script quản lý XrayR.sh (có thể cài binary vẫn OK).${plain}"
 }
 
+# Keep legacy /etc/XrayR/config.yml timeouts from killing upload speed tests.
+# Binary update alone used to leave UplinkOnly: 2~5 in place.
+patch_connection_config() {
+    local f="${CONFIG_DIR}/config.yml"
+    [[ -f "${f}" ]] || return 0
+    if grep -qE '^[[:space:]]*UplinkOnly:[[:space:]]*([0-9]{1,2}|[12][0-9]{2})[[:space:]]*$' "${f}" \
+        || grep -qE '^[[:space:]]*DownlinkOnly:[[:space:]]*([0-9]{1,2}|[12][0-9]{2})[[:space:]]*$' "${f}" \
+        || grep -qE '^[[:space:]]*ConnIdle:[[:space:]]*([0-9]|[1-5][0-9])[[:space:]]*$' "${f}"; then
+        cp -a "${f}" "${f}.bak.conn.$(date +%s)"
+        sed -i \
+            -e 's/^[[:space:]]*ConnIdle:.*/  ConnIdle: 600/' \
+            -e 's/^[[:space:]]*UplinkOnly:.*/  UplinkOnly: 3600/' \
+            -e 's/^[[:space:]]*DownlinkOnly:.*/  DownlinkOnly: 3600/' \
+            -e 's/^[[:space:]]*BufferSize:.*/  BufferSize: 1024/' \
+            "${f}"
+        echo -e "${green}Đã nâng ConnectionConfig (UplinkOnly/DownlinkOnly/ConnIdle) trong ${f}${plain}"
+    fi
+}
+
 install_service_and_tools() {
     local version=${1:-}
     mkdir -p "${CONFIG_DIR}"
@@ -262,6 +281,7 @@ install_service_and_tools() {
         echo -e "${yellow}Cài đặt mới: hãy sửa ${CONFIG_DIR}/config.yml trước khi khởi động.${plain}"
         echo -e "Tài liệu: ${GITHUB_BASE}"
     else
+        patch_connection_config
         systemctl start XrayR
         sleep 2
         if check_status; then

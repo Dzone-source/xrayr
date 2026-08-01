@@ -124,6 +124,31 @@ func (l *Limiter) UpdateInboundLimiter(tag string, updatedUserList *[]api.UserIn
 	return nil
 }
 
+// UpdateNodeSpeedLimit updates inbound node rate without recreating the handler.
+func (l *Limiter) UpdateNodeSpeedLimit(tag string, nodeSpeedLimit uint64) error {
+	if value, ok := l.InboundInfo.Load(tag); ok {
+		inboundInfo := value.(*InboundInfo)
+		inboundInfo.NodeSpeedLimit = nodeSpeedLimit
+		inboundInfo.UserInfo.Range(func(key, value interface{}) bool {
+			u := value.(UserInfo)
+			email := key.(string)
+			limit := determineRate(nodeSpeedLimit, u.SpeedLimit)
+			if limit > 0 {
+				if bucket, ok := inboundInfo.BucketHub.Load(email); ok {
+					limiter := bucket.(*rate.Limiter)
+					limiter.SetLimit(rate.Limit(limit))
+					limiter.SetBurst(int(limit))
+				}
+			} else {
+				inboundInfo.BucketHub.Delete(email)
+			}
+			return true
+		})
+		return nil
+	}
+	return fmt.Errorf("no such inbound in limiter: %s", tag)
+}
+
 func (l *Limiter) DeleteInboundLimiter(tag string) error {
 	l.InboundInfo.Delete(tag)
 	return nil
