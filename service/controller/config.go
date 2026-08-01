@@ -14,6 +14,7 @@ type Config struct {
 	DNSType                   string                           `mapstructure:"DNSType"`
 	DisableUploadTraffic      bool                             `mapstructure:"DisableUploadTraffic"`
 	DisableGetRule            bool                             `mapstructure:"DisableGetRule"`
+	DisableSpeedLimit         bool                             `mapstructure:"DisableSpeedLimit"` // ignore panel/node Mbps caps
 	EnableProxyProtocol       bool                             `mapstructure:"EnableProxyProtocol"`
 	EnableTFO                 bool                             `mapstructure:"EnableTFO"`
 	EnableFallback            bool                             `mapstructure:"EnableFallback"`

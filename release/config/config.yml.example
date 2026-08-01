@@ -37,6 +37,8 @@ Nodes:
       EnableProxyProtocol: false
       EnableTFO: true # Hiddify-Manager style TCP Fast Open
       DisableSniffing: false
+      # true = bỏ qua mọi node/user Mbps (tránh rate-limit cắt upload speedtest)
+      DisableSpeedLimit: true
       AutoSpeedLimitConfig:
         Limit: 0
         WarnTimes: 0

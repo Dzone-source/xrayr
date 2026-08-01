@@ -104,13 +104,26 @@ func (c *Controller) Start() error {
 	// sync controller userList
 	c.userList = userInfo
 
+	if c.config.DisableSpeedLimit && userInfo != nil {
+		cleared := *userInfo
+		for i := range cleared {
+			cleared[i].SpeedLimit = 0
+		}
+		userInfo = &cleared
+		c.userList = userInfo
+	}
+
 	err = c.addNewUser(userInfo, newNodeInfo)
 	if err != nil {
 		return err
 	}
 
+	nodeSpeed := newNodeInfo.SpeedLimit
+	if c.config.DisableSpeedLimit {
+		nodeSpeed = 0
+	}
 	// Add Limiter
-	if err := c.AddInboundLimiter(c.Tag, newNodeInfo.SpeedLimit, userInfo, c.config.GlobalDeviceLimitConfig); err != nil {
+	if err := c.AddInboundLimiter(c.Tag, nodeSpeed, userInfo, c.config.GlobalDeviceLimitConfig); err != nil {
 		c.logger.Print(err)
 	}
 
@@ -226,7 +239,21 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		usersChanged = false
 	}
 	if usersChanged && newUserInfo != nil {
-		c.logger.Printf("GetUserList: %d users", len(*newUserInfo))
+		limited := 0
+		for _, u := range *newUserInfo {
+			if u.SpeedLimit > 0 {
+				limited++
+			}
+		}
+		c.logger.Printf("GetUserList: %d users (%d with SpeedLimit>0)", len(*newUserInfo), limited)
+		if c.config.DisableSpeedLimit && limited > 0 {
+			cleared := *newUserInfo
+			for i := range cleared {
+				cleared[i].SpeedLimit = 0
+			}
+			newUserInfo = &cleared
+			c.logger.Print("DisableSpeedLimit: cleared all user SpeedLimit values")
+		}
 	}
 
 	// If nodeInfo changed
@@ -295,8 +322,12 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 			return nil
 		}
 
+		nodeSpeed := newNodeInfo.SpeedLimit
+		if c.config.DisableSpeedLimit {
+			nodeSpeed = 0
+		}
 		// Add Limiter
-		if err := c.AddInboundLimiter(c.Tag, newNodeInfo.SpeedLimit, newUserInfo, c.config.GlobalDeviceLimitConfig); err != nil {
+		if err := c.AddInboundLimiter(c.Tag, nodeSpeed, newUserInfo, c.config.GlobalDeviceLimitConfig); err != nil {
 			c.logger.Print(err)
 			return nil
 		}

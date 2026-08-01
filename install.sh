@@ -241,6 +241,7 @@ install_manage_script() {
 patch_connection_config() {
     local f="${CONFIG_DIR}/config.yml"
     [[ -f "${f}" ]] || return 0
+    local changed=0
     if grep -qE '^[[:space:]]*UplinkOnly:[[:space:]]*([0-9]{1,2}|[12][0-9]{2})[[:space:]]*$' "${f}" \
         || grep -qE '^[[:space:]]*DownlinkOnly:[[:space:]]*([0-9]{1,2}|[12][0-9]{2})[[:space:]]*$' "${f}" \
         || grep -qE '^[[:space:]]*ConnIdle:[[:space:]]*([0-9]|[1-5][0-9])[[:space:]]*$' "${f}"; then
@@ -252,6 +253,16 @@ patch_connection_config() {
             -e 's/^[[:space:]]*BufferSize:.*/  BufferSize: 1024/' \
             "${f}"
         echo -e "${green}Đã nâng ConnectionConfig (UplinkOnly/DownlinkOnly/ConnIdle) trong ${f}${plain}"
+        changed=1
+    fi
+    # Ensure DisableSpeedLimit exists under ControllerConfig (upload speedtest).
+    if ! grep -qE '^[[:space:]]*DisableSpeedLimit:' "${f}"; then
+        if [[ "${changed}" -eq 0 ]]; then
+            cp -a "${f}" "${f}.bak.conn.$(date +%s)"
+        fi
+        sed -i '/^[[:space:]]*EnableTFO:/a\      DisableSpeedLimit: true' "${f}" 2>/dev/null \
+            || sed -i '/^[[:space:]]*UpdatePeriodic:/a\      DisableSpeedLimit: true' "${f}"
+        echo -e "${green}Đã thêm DisableSpeedLimit: true vào ${f}${plain}"
     fi
 }
 

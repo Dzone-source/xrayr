@@ -12,9 +12,9 @@ Node protocol: **Trojan** (`NodeType: Trojan`).
 
 ```bash
 # Cài / cập nhật kiểu XrayR cũ (tải zip release — không cần Go)
-bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/download/v0.9.14/install.sh) v0.9.14
+bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/download/v0.9.15/install.sh) v0.9.15
 # hoặc nếu đã có script quản lý:
-# XrayR update v0.9.14
+# XrayR update v0.9.15
 
 nano /etc/XrayR/config.yml   # NodeType: Trojan + CertConfig
 systemctl restart XrayR
@@ -45,17 +45,20 @@ ConnectionConfig:
 Deploy node (config **`/etc/XrayR`**, **không cần Go**):
 
 ```bash
-# v0.9.14+: Hiddify-aligned sniffing (no fakedns) + TFO + timeout clamp
-XrayR update v0.9.14
+# v0.9.15+: tách rate-limit up/down + DisableSpeedLimit (fix upload speedtest)
+XrayR update v0.9.15
 # hoặc:
-# bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/download/v0.9.14/install.sh) v0.9.14
+# bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/download/v0.9.15/install.sh) v0.9.15
 
-# Kiểm tra config (bắt buộc UplinkOnly/DownlinkOnly >= 300; binary cũng clamp)
-grep -nE 'UplinkOnly|DownlinkOnly|ConnIdle|SpeedLimit|DeviceLimit|NodeType' /etc/XrayR/config.yml
-# Kỳ vọng: UplinkOnly: 3600, DownlinkOnly: 3600, SpeedLimit: 0, DeviceLimit: 0
+# Kiểm tra config
+grep -nE 'UplinkOnly|DownlinkOnly|ConnIdle|DisableSpeedLimit|SpeedLimit|DeviceLimit|NodeType' /etc/XrayR/config.yml
+# Kỳ vọng:
+#   UplinkOnly/DownlinkOnly: 3600
+#   DisableSpeedLimit: true
+#   ApiConfig SpeedLimit: 0, DeviceLimit: 0
 
 systemctl restart XrayR
-journalctl -u XrayR -n 50 --no-pager | egrep -i 'UplinkOnly|clamping|GetUserList|rebuild|user deleted|not a valid user'
+journalctl -u XrayR -n 50 --no-pager | egrep -i 'UplinkOnly|clamping|GetUserList|SpeedLimit|DisableSpeedLimit|rebuild|user deleted'
 ```
 
 Upload speedtest vẫn đứt nếu `/etc/XrayR/config.yml` còn `UplinkOnly: 5` (update binary không sửa YAML trên bản < 0.9.13). Phải thấy `GetUserList: N users` (N>0), **không** thấy `rebuilding inbound` mỗi chu kỳ sync.
