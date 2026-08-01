@@ -470,12 +470,17 @@ func nodeInfoRequiresInboundRebuild(old, new *api.NodeInfo) bool {
 	if old == nil || new == nil {
 		return true
 	}
+	// Trojan plain TCP TLS ignores Host (WS/CDN header only). Host flaps from
+	// panel custom_config must not tear down active upload speed tests.
+	hostMatters := !(old.NodeType == "Trojan" && (old.TransportProtocol == "" || old.TransportProtocol == "tcp"))
+	headerEqual := len(old.Header) == 0 && len(new.Header) == 0 || reflect.DeepEqual(old.Header, new.Header)
+
 	if old.NodeType != new.NodeType ||
 		old.NodeID != new.NodeID ||
 		old.Port != new.Port ||
 		old.AlterID != new.AlterID ||
 		old.TransportProtocol != new.TransportProtocol ||
-		old.Host != new.Host ||
+		(hostMatters && old.Host != new.Host) ||
 		old.Path != new.Path ||
 		old.EnableTLS != new.EnableTLS ||
 		old.EnableVless != new.EnableVless ||
@@ -483,7 +488,7 @@ func nodeInfoRequiresInboundRebuild(old, new *api.NodeInfo) bool {
 		old.CypherMethod != new.CypherMethod ||
 		old.ServiceName != new.ServiceName ||
 		old.EnableREALITY != new.EnableREALITY ||
-		!reflect.DeepEqual(old.Header, new.Header) ||
+		!headerEqual ||
 		!reflect.DeepEqual(old.REALITYConfig, new.REALITYConfig) {
 		return true
 	}

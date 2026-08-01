@@ -12,9 +12,9 @@ Node protocol: **Trojan** (`NodeType: Trojan`).
 
 ```bash
 # Cài / cập nhật kiểu XrayR cũ (tải zip release — không cần Go)
-bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/download/v0.9.13/install.sh) v0.9.13
+bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/download/v0.9.14/install.sh) v0.9.14
 # hoặc nếu đã có script quản lý:
-# XrayR update v0.9.13
+# XrayR update v0.9.14
 
 nano /etc/XrayR/config.yml   # NodeType: Trojan + CertConfig
 systemctl restart XrayR
@@ -45,10 +45,10 @@ ConnectionConfig:
 Deploy node (config **`/etc/XrayR`**, **không cần Go**):
 
 ```bash
-# v0.9.13+: update zip + tự patch UplinkOnly/DownlinkOnly nếu config cũ còn 2~5
-XrayR update v0.9.13
+# v0.9.14+: Hiddify-aligned sniffing (no fakedns) + TFO + timeout clamp
+XrayR update v0.9.14
 # hoặc:
-# bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/download/v0.9.13/install.sh) v0.9.13
+# bash <(curl -Ls https://github.com/Dzone-source/xrayr/releases/download/v0.9.14/install.sh) v0.9.14
 
 # Kiểm tra config (bắt buộc UplinkOnly/DownlinkOnly >= 300; binary cũng clamp)
 grep -nE 'UplinkOnly|DownlinkOnly|ConnIdle|SpeedLimit|DeviceLimit|NodeType' /etc/XrayR/config.yml

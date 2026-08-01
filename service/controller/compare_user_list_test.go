@@ -40,14 +40,14 @@ func TestCompareUserListCredentialChangeRemoves(t *testing.T) {
 func TestNodeInfoRequiresInboundRebuildIgnoresSpeedLimit(t *testing.T) {
 	old := &api.NodeInfo{
 		NodeType: "Trojan", NodeID: 1, Port: 443, TransportProtocol: "tcp",
-		EnableTLS: true, SpeedLimit: 0,
+		EnableTLS: true, SpeedLimit: 0, Host: "a.example.com",
 	}
 	new := &api.NodeInfo{
 		NodeType: "Trojan", NodeID: 1, Port: 443, TransportProtocol: "tcp",
-		EnableTLS: true, SpeedLimit: 1250000,
+		EnableTLS: true, SpeedLimit: 1250000, Host: "b.example.com",
 	}
 	if nodeInfoRequiresInboundRebuild(old, new) {
-		t.Fatal("SpeedLimit-only change must not rebuild inbound")
+		t.Fatal("SpeedLimit/Host-only change on Trojan TCP must not rebuild inbound")
 	}
 	new.Port = 8443
 	if !nodeInfoRequiresInboundRebuild(old, new) {

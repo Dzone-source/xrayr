@@ -35,6 +35,8 @@ Nodes:
       EnableDNS: false
       DNSType: AsIs
       EnableProxyProtocol: false
+      EnableTFO: true # Hiddify-Manager style TCP Fast Open
+      DisableSniffing: false
       AutoSpeedLimitConfig:
         Limit: 0
         WarnTimes: 0
