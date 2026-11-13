@@ -1,9 +1,9 @@
-Version: 0.9.5-lowmem.2
-Source commit: a20680fb2231055203f04d4d82f27825e5e7be89
+Version: 0.9.5-lowmem.3
+Source commit: dbc46f3846442ed2ef1f775ad00d9c6f4858a1b4
 Toolchain: Go 1.24.1 linux/amd64
 Targets: linux/amd64 and linux/arm64
 CGO_ENABLED=0, -mod=readonly, -trimpath, -ldflags="-s -w"
 Linux amd64: version command and local SOCKS-to-HTTP smoke tested.
 Linux arm64: cross-compiled, not executed in this environment.
-SSpanel format regression tests and installer rollback simulations passed.
-Source: https://github.com/Dzone-source/xrayr/tree/a20680fb2231055203f04d4d82f27825e5e7be89
+Typed SSpanel schema, real REALITY node startup with a mock panel, and installer rollback tests passed.
+Source: https://github.com/Dzone-source/xrayr/tree/dbc46f3846442ed2ef1f775ad00d9c6f4858a1b4
