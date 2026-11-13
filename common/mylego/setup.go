@@ -11,7 +11,6 @@ import (
 	"github.com/go-acme/lego/v4/challenge/http01"
 	"github.com/go-acme/lego/v4/challenge/tlsalpn01"
 	"github.com/go-acme/lego/v4/lego"
-	"github.com/go-acme/lego/v4/providers/dns"
 	"github.com/go-acme/lego/v4/registration"
 	"golang.org/x/crypto/acme"
 )
@@ -81,7 +80,7 @@ func setupChallenges(l *LegoCMD, client *lego.Client) {
 }
 
 func setupDNS(p string, client *lego.Client) {
-	provider, err := dns.NewDNSChallengeProviderByName(p)
+	provider, err := newDNSProvider(p)
 	if err != nil {
 		log.Panic(err)
 	}

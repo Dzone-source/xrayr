@@ -101,6 +101,7 @@ func (c *Controller) removeUsers(users []string, tag string) error {
 		if err != nil {
 			return err
 		}
+		c.dispatcher.Limiter.DeleteUserLimiter(tag, email)
 	}
 	return nil
 }

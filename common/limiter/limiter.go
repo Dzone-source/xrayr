@@ -129,6 +129,16 @@ func (l *Limiter) DeleteInboundLimiter(tag string) error {
 	return nil
 }
 
+// DeleteUserLimiter releases state for a user removed from an inbound.
+func (l *Limiter) DeleteUserLimiter(tag, email string) {
+	if value, ok := l.InboundInfo.Load(tag); ok {
+		info := value.(*InboundInfo)
+		info.UserInfo.Delete(email)
+		info.BucketHub.Delete(email)
+		info.UserOnlineIP.Delete(email)
+	}
+}
+
 func (l *Limiter) GetOnlineDevice(tag string) (*[]api.OnlineUser, error) {
 	var onlineUser []api.OnlineUser
 
@@ -179,21 +189,29 @@ func (l *Limiter) GetUserBucket(tag string, email string, ip string) (limiter *r
 		}
 
 		// Local device limit
-		ipMap := new(sync.Map)
-		ipMap.Store(ip, uid)
+		// Most connections belong to an already-online user. Allocate a map only
+		// when the user first appears in this reporting interval.
+		v, online := inboundInfo.UserOnlineIP.Load(email)
+		if !online {
+			ipMap := new(sync.Map)
+			ipMap.Store(ip, uid)
+			v, online = inboundInfo.UserOnlineIP.LoadOrStore(email, ipMap)
+		}
 		// If any device is online
-		if v, ok := inboundInfo.UserOnlineIP.LoadOrStore(email, ipMap); ok {
+		if online {
 			ipMap := v.(*sync.Map)
 			// If this is a new ip
-			if _, ok := ipMap.LoadOrStore(ip, uid); !ok {
-				counter := 0
-				ipMap.Range(func(key, value interface{}) bool {
-					counter++
-					return true
-				})
-				if counter > deviceLimit && deviceLimit > 0 {
-					ipMap.Delete(ip)
-					return nil, false, true
+			if _, exists := ipMap.Load(ip); !exists {
+				if _, loaded := ipMap.LoadOrStore(ip, uid); !loaded {
+					counter := 0
+					ipMap.Range(func(key, value interface{}) bool {
+						counter++
+						return true
+					})
+					if counter > deviceLimit && deviceLimit > 0 {
+						ipMap.Delete(ip)
+						return nil, false, true
+					}
 				}
 			}
 		}
@@ -208,6 +226,9 @@ func (l *Limiter) GetUserBucket(tag string, email string, ip string) (limiter *r
 		// Speed limit
 		limit := determineRate(nodeLimit, userLimit) // Determine the speed limit rate
 		if limit > 0 {
+			if bucket, ok := inboundInfo.BucketHub.Load(email); ok {
+				return bucket.(*rate.Limiter), true, false
+			}
 			limiter := rate.NewLimiter(rate.Limit(limit), int(limit)) // Byte/s
 			if v, ok := inboundInfo.BucketHub.LoadOrStore(email, limiter); ok {
 				bucket := v.(*rate.Limiter)
