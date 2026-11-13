@@ -1,6 +1,6 @@
 # XrayR tối ưu — cài sẵn cho Debian 12/13
 
-Nhánh này chỉ phân phối **bản tối ưu**, phiên bản `0.9.5-lowmem.1`.
+Nhánh này chỉ phân phối **bản tối ưu**, phiên bản `0.9.5-lowmem.2`.
 Binary Linux `amd64` và `arm64` đã được build bằng Go 1.24.1, nén trong
 [`dist/`](dist/), kèm SHA256. VPS không cần Git, Go hoặc tự biên dịch.
 
@@ -16,7 +16,8 @@ sudo bash /tmp/install-xrayr-lowmem.sh
 Installer tự nhận kiến trúc CPU, tải binary đã build, kiểm tra SHA256, chạy
 `version`, sao lưu binary cũ, thay binary và restart dịch vụ. Nếu restart thất
 bại hoặc dịch vụ không active sau 2 giây, installer phục hồi binary cũ.
-Nó giữ nguyên config, chứng chỉ, systemd unit, buffer, timeout và kernel.
+Installer in và lưu log lỗi riêng trước khi rollback (quyền 0600), sau đó kiểm tra
+lại dịch vụ cũ. Nó giữ nguyên config, chứng chỉ, systemd unit, buffer, timeout và kernel.
 Restart ngắt các kết nối đang hoạt động; chọn thời điểm bảo trì phù hợp.
 
 Cần có `curl`, `tar`, `sha256sum` trên VPS. Nếu thiếu, cài bằng kho Debian:
@@ -114,3 +115,11 @@ Không chạy `go mod download` để lấy toàn bộ SDK đã không còn sử
 `go build -mod=readonly` chỉ tải các dependency cần thiết.
 
 Xem [VALIDATION.md](VALIDATION.md) để biết các test đã chạy và giới hạn.
+
+## Bản sửa SSpanel (`lowmem.2`)
+
+Sửa panic khi panel trả `server` không có đủ các phần phân cách bằng dấu `;`.
+Nếu không có định dạng legacy hợp lệ nhưng có `custom_config` với port/network,
+parser dùng custom config thay vì chỉ dựa vào trường version. Vẫn tôn trọng
+`DisableCustomConfig`; phản hồi thiếu dữ liệu trả lỗi rõ ràng thay vì panic.
+Không ghi toàn bộ node response (có thể chứa private key) vào thông báo lỗi.

@@ -41,3 +41,14 @@ Known limitations:
 - No Debian VPS access, production traffic test, kernel change, or deployment
   was performed. Throughput, latency and RSS on the target must be measured
   before declaring the production performance requirement satisfied.
+
+Update lowmem.2:
+- Reproduced the SSpanel panic using a single-field server string.
+- Regression tests cover absent/old version with modern custom_config,
+  valid legacy replies, explicit legacy override, invalid ports/options,
+  and suppression of private node payloads in errors (with race detection).
+- Installer tests simulate success, failed restart, inactive service, and
+  failed rollback startup. They verify restoration, owner-only diagnostic
+  logs, and clearing the systemd start-rate limit without invoking systemd.
+- The real VPS API payload is not available locally; production compatibility
+  must still be checked after installation. No customer credentials are used.

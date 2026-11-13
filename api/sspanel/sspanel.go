@@ -187,11 +187,21 @@ func (c *APIClient) GetNodeInfo() (nodeInfo *api.NodeInfo, err error) {
 		return nil, fmt.Errorf("unmarshal %s failed: %s", reflect.TypeOf(nodeInfoResponse), err)
 	}
 
-	// determine ssPanel version, if disable custom config or version < 2021.11, then use old api
+	// Some panels omit the version while returning modern custom_config. Fall
+	// back to its schema only when the legacy V2ray server format is absent;
+	// retain explicit DisableCustomConfig and valid legacy responses.
 	c.version = nodeInfoResponse.Version
 	var isExpired bool
 	if compareVersion(c.version, "2021.11") == -1 {
 		isExpired = true
+	}
+	if !c.DisableCustomConfig && isExpired && c.NodeType == "V2ray" &&
+		len(strings.Split(nodeInfoResponse.RawServerString, ";")) < 6 {
+		var custom CustomConfig
+		if json.Unmarshal(nodeInfoResponse.CustomConfig, &custom) == nil &&
+			custom.OffsetPortNode != "" && custom.Network != "" {
+			isExpired = false
+		}
 	}
 
 	if c.DisableCustomConfig || isExpired {
@@ -214,14 +224,12 @@ func (c *APIClient) GetNodeInfo() (nodeInfo *api.NodeInfo, err error) {
 	} else {
 		nodeInfo, err = c.ParseSSPanelNodeInfo(nodeInfoResponse)
 		if err != nil {
-			res, _ := json.Marshal(nodeInfoResponse)
-			return nil, fmt.Errorf("parse node info failed: %s, \nError: %s, \nPlease check the doc of custom_config for help: https://xrayr-project.github.io/XrayR-doc/dui-jie-sspanel/sspanel/sspanel_custom_config", string(res), err)
+			return nil, fmt.Errorf("parse node custom_config failed: %w", err)
 		}
 	}
 
 	if err != nil {
-		res, _ := json.Marshal(nodeInfoResponse)
-		return nil, fmt.Errorf("parse node info failed: %s, \nError: %s", string(res), err)
+		return nil, fmt.Errorf("parse node info failed: %w", err)
 	}
 
 	return nodeInfo, nil
@@ -418,14 +426,17 @@ func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (
 	}
 	// nodeInfo.RawServerString = strings.ToLower(nodeInfo.RawServerString)
 	serverConf := strings.Split(nodeInfoResponse.RawServerString, ";")
+	if len(serverConf) < 6 {
+		return nil, errors.New("invalid legacy V2ray server format: expected at least 6 semicolon-separated fields; check panel custom_config and DisableCustomConfig")
+	}
 
-	parsedPort, err := strconv.ParseInt(serverConf[1], 10, 32)
-	if err != nil {
-		return nil, err
+	parsedPort, err := strconv.ParseUint(serverConf[1], 10, 16)
+	if err != nil || parsedPort == 0 {
+		return nil, errors.New("invalid legacy V2ray node port: expected 1..65535")
 	}
 	port := uint32(parsedPort)
 
-	parsedAlterID, err := strconv.ParseInt(serverConf[2], 10, 16)
+	parsedAlterID, err := strconv.ParseUint(serverConf[2], 10, 16)
 	if err != nil {
 		return nil, err
 	}
@@ -445,16 +456,16 @@ func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (
 	extraServerConf := strings.Split(serverConf[5], "|")
 	serviceName = ""
 	for _, item := range extraServerConf {
-		conf := strings.Split(item, "=")
-		key := conf[0]
-		if key == "" {
+		if item == "" {
 			continue
 		}
-		value := conf[1]
+		key, value, ok := strings.Cut(item, "=")
+		if !ok {
+			return nil, errors.New("invalid legacy V2ray option: expected key=value")
+		}
 		switch key {
 		case "path":
-			rawPath := strings.Join(conf[1:], "=") // In case of the path strings contains the "="
-			path = rawPath
+			path = value
 		case "host":
 			host = value
 		case "servicename":

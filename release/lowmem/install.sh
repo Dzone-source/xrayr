@@ -2,6 +2,41 @@
 # Upgrade an existing XrayR service without changing config or network settings.
 set -euo pipefail
 
+restart_with_rollback() {
+  local service=$1 executable=$2 saved=$3
+  local started_at diagnostic="${3}.startup.log"
+  started_at=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+  # Clear a previous systemd start-rate limit for this service only.
+  systemctl reset-failed "$service" >/dev/null 2>&1 || true
+  if systemctl restart "$service" && sleep 2 && systemctl is-active --quiet "$service"; then
+    echo "Service active with optimized XrayR. Test your client connection and panel traffic."
+    echo "Rollback: cp -a '$saved' '${executable}.rollback' && mv -fT '${executable}.rollback' '$executable' && systemctl restart '$service'"
+    return 0
+  fi
+
+  echo 'Startup failed. Capturing the failure before restoring the old binary.' >&2
+  if (umask 077; {
+    systemctl show "$service" -p Result -p ExecMainCode -p ExecMainStatus || true
+    journalctl -u "$service" --since "$started_at" -n 200 --no-pager -o cat | sed '/ accepted /d' || true
+  } > "$diagnostic"); then
+    cat "$diagnostic" >&2
+    echo "Failure log: $diagnostic (redact keys/tokens before sharing)" >&2
+  else
+    echo 'Could not save diagnostics; continuing rollback.' >&2
+  fi
+  staged=$(mktemp "${executable}.rollback.XXXXXX") || return 1
+  cp -a -- "$saved" "$staged" || return 1
+  mv -fT -- "$staged" "$executable" || return 1
+  systemctl reset-failed "$service" >/dev/null 2>&1 || true
+  if systemctl restart "$service" && sleep 2 && systemctl is-active --quiet "$service"; then
+    echo 'Old binary restored; service is active.' >&2
+  else
+    echo "Old binary restored, but $service is not active. Inspect systemctl status and the saved log." >&2
+  fi
+  return 1
+}
+
+main() {
 unit=""
 binary=""
 download_only=""
@@ -52,9 +87,10 @@ work=$(mktemp -d)
 staged=""
 trap 'rm -rf -- "$work"; if [[ -n $staged ]]; then rm -f -- "$staged"; fi' EXIT
 artifact="XrayR-linux-$arch"
+expected_version=0.9.5-lowmem.2
 base=https://raw.githubusercontent.com/Dzone-source/xrayr/perf/low-memory-debian/release/lowmem/dist
 for file in "$artifact.tar.gz" "$artifact.tar.gz.sha256"; do
-  curl --proto '=https' --tlsv1.2 -fSL --retry 2 "$base/$file" -o "$work/$file"
+  curl --proto '=https' --tlsv1.2 -fSL --retry 2 "$base/$file?v=$expected_version" -o "$work/$file"
 done
 # Require exactly the expected checksum record before passing it to sha256sum.
 checksum_line=$(cat "$work/$artifact.tar.gz.sha256")
@@ -63,7 +99,9 @@ checksum_line=$(cat "$work/$artifact.tar.gz.sha256")
 [[ $(tar -tzf "$work/$artifact.tar.gz") == "$artifact" ]] || { echo 'Unexpected archive contents' >&2; exit 1; }
 tar -xzf "$work/$artifact.tar.gz" -C "$work" --no-same-owner
 chmod 0755 "$work/$artifact"
-"$work/$artifact" version
+version_output=$("$work/$artifact" version)
+printf '%s\n' "$version_output"
+[[ $version_output == *"XrayR $expected_version "* ]] || { echo "Expected $expected_version; download may be stale. No service changes were made." >&2; exit 1; }
 if [[ -n $download_only ]]; then
   mkdir -p -- "$download_only"
   install -m 0755 "$work/$artifact" "$download_only/XrayR"
@@ -79,14 +117,9 @@ install -m 0755 -- "$work/$artifact" "$staged"
 cp --attributes-only --preserve=all -- "$binary" "$staged"
 mv -fT -- "$staged" "$binary"
 echo "Backup: $backup"
-if systemctl restart "$unit" && sleep 2 && systemctl is-active --quiet "$unit"; then
-  echo "Installed optimized XrayR. Test your client connection and panel traffic."
-  echo "Rollback: cp -a '$backup' '${binary}.rollback' && mv -fT '${binary}.rollback' '$binary' && systemctl restart '$unit'"
-else
-  echo 'Startup failed; restoring the old binary.' >&2
-  staged=$(mktemp "${binary}.rollback.XXXXXX")
-  cp -a -- "$backup" "$staged"
-  mv -fT -- "$staged" "$binary"
-  systemctl restart "$unit"
-  exit 1
+restart_with_rollback "$unit" "$binary" "$backup"
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
 fi
