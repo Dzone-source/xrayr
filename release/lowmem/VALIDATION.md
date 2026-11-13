@@ -52,3 +52,14 @@ Update lowmem.2:
   logs, and clearing the systemd start-rate limit without invoking systemd.
 - The real VPS API payload is not available locally; production compatibility
   must still be checked after installation. No customer credentials are used.
+
+Update lowmem.3:
+- The supplied redacted schema identified numeric offset_port_node and boolean
+  enable_vless/allow_insecure. Added a strict CustomConfig scalar decoder that
+  also preserves legacy string representations.
+- Race-enabled tests cover the supplied field types/version, mixed scalar
+  representations and invalid values. VLESS Vision and REALITY flags remain set.
+- A local mock SSpanel response now drives a real Panel.Start: fetch typed node
+  JSON, create REALITY inbound, fetch/add a fixture user, bind the listener and
+  shut down cleanly. Timeouts and the 1024 KiB buffer match the supplied config.
+- External production connectivity and throughput still require VPS validation.

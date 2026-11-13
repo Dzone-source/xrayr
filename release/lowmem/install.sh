@@ -87,7 +87,7 @@ work=$(mktemp -d)
 staged=""
 trap 'rm -rf -- "$work"; if [[ -n $staged ]]; then rm -f -- "$staged"; fi' EXIT
 artifact="XrayR-linux-$arch"
-expected_version=0.9.5-lowmem.2
+expected_version=0.9.5-lowmem.3
 base=https://raw.githubusercontent.com/Dzone-source/xrayr/perf/low-memory-debian/release/lowmem/dist
 for file in "$artifact.tar.gz" "$artifact.tar.gz.sha256"; do
   curl --proto '=https' --tlsv1.2 -fSL --retry 2 "$base/$file?v=$expected_version" -o "$work/$file"

@@ -1,6 +1,6 @@
 # XrayR tối ưu — cài sẵn cho Debian 12/13
 
-Nhánh này chỉ phân phối **bản tối ưu**, phiên bản `0.9.5-lowmem.2`.
+Nhánh này chỉ phân phối **bản tối ưu**, phiên bản `0.9.5-lowmem.3`.
 Binary Linux `amd64` và `arm64` đã được build bằng Go 1.24.1, nén trong
 [`dist/`](dist/), kèm SHA256. VPS không cần Git, Go hoặc tự biên dịch.
 
@@ -141,3 +141,14 @@ tuỳ ý. Báo cáo giữ tên trường, kiểu dữ liệu, các giá trị po
 allowlist và số phần của `server`; có thể gửi báo cáo này để sửa parser theo
 phản hồi thực tế. Không gửi file config hoặc JSON phản hồi gốc chứa bí mật.
 Công cụ không đi theo HTTP redirect để tránh chuyển query credential sang host khác.
+
+## Bản sửa scalar JSON (`lowmem.3`)
+
+Hỗ trợ `offset_port_node` dạng số hoặc chuỗi; các cờ `enable_vless`,
+`enable_xtls`, `allow_insecure`, `enable_reality`, `verify_cert` nhận boolean,
+0/1 hoặc chuỗi tương đương. Phản hồi có version `1.0.0` nhưng custom_config
+hợp lệ được nhận dạng theo cấu trúc, giữ nguyên TCP + VLESS Vision + REALITY.
+Dữ liệu không hợp lệ vẫn bị từ chối; không tự đoán port hay đổi giao thức.
+Test khởi động panel giả lập đã dùng đúng kiểu trường của báo cáo chẩn đoán,
+API user giả lập, khoá REALITY sinh tạm và các giá trị timeout/buffer của config
+được cung cấp. Không dùng khóa hoặc phản hồi bí mật của khách hàng trong test.

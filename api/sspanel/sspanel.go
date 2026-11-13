@@ -774,9 +774,9 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 		speedLimit = uint64((nodeInfoResponse.SpeedLimit * 1000000) / 8)
 	}
 
-	parsedPort, err := strconv.ParseInt(nodeConfig.OffsetPortNode, 10, 32)
-	if err != nil {
-		return nil, err
+	parsedPort, err := strconv.ParseUint(nodeConfig.OffsetPortNode, 10, 16)
+	if err != nil || parsedPort == 0 {
+		return nil, errors.New("invalid custom_config node port: expected 1..65535")
 	}
 
 	port := uint32(parsedPort)

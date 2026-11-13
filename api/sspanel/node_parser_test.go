@@ -35,6 +35,7 @@ func TestNodeFormatSelection(t *testing.T) {
 		port                          uint32
 	}{
 		{"missing-version-modern", "", "example.com", `{"offset_port_node":"443","network":"tcp","enable_vless":"1","flow":"xtls-rprx-vision"}`, false, false, 443},
+		{"typed-production-shape", "1.0.0", "example.com", `{"offset_port_user":0,"offset_port_node":443,"network":"tcp","security":"reality","flow":"xtls-rprx-vision","host":"example.com","sni":"example.com","public_key":"test-only","short_id":"1122334455667788","fingerprint":"chrome","allow_insecure":false,"enable_vless":true,"enable_reality":true}`, false, false, 443},
 		{"old-version-modern-shape", "2020.1", "example.com", `{"offset_port_node":"443","network":"tcp"}`, false, false, 443},
 		{"legacy-kept", "2020.1", "example.com;8443;0;tcp;;", `{"offset_port_node":"443","network":"tcp"}`, false, false, 8443},
 		{"modern-version", "2021.11", "example.com", `{"offset_port_node":"443","network":"tcp"}`, false, false, 443},
@@ -68,8 +69,11 @@ func TestNodeFormatSelection(t *testing.T) {
 			if node.Port != tc.port || node.TransportProtocol != "tcp" {
 				t.Fatalf("unexpected node fields: %+v", node)
 			}
-			if tc.name == "missing-version-modern" && (!node.EnableVless || node.VlessFlow != "xtls-rprx-vision") {
+			if (tc.name == "missing-version-modern" || tc.name == "typed-production-shape") && (!node.EnableVless || node.VlessFlow != "xtls-rprx-vision") {
 				t.Fatal("modern VLESS Vision settings were not preserved")
+			}
+			if tc.name == "typed-production-shape" && !node.EnableREALITY {
+				t.Fatal("typed REALITY flag was not preserved")
 			}
 		})
 	}

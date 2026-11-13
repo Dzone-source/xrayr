@@ -4,9 +4,12 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/XrayR-project/XrayR/api"
+	"github.com/XrayR-project/XrayR/api/sspanel"
 	"github.com/XrayR-project/XrayR/common/mylego"
 	"github.com/xtls/xray-core/app/proxyman"
 	"github.com/xtls/xray-core/proxy/vless"
@@ -27,9 +30,16 @@ func TestVlessVisionReality(t *testing.T) {
 		},
 		CertConfig: &mylego.CertConfig{CertMode: "none"},
 	}
-	node := &api.NodeInfo{
-		NodeType: "V2ray", EnableVless: true, VlessFlow: "xtls-rprx-vision",
-		Port: 10443, TransportProtocol: "tcp",
+	// Match the production response's field types, without customer values.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ret":1,"data":{"version":"1.0.0","server":"example.com","custom_config":{"offset_port_node":443,"network":"tcp","security":"reality","flow":"xtls-rprx-vision","enable_vless":true,"enable_reality":true,"allow_insecure":false}}}`))
+	}))
+	defer server.Close()
+	client := sspanel.New(&api.Config{APIHost: server.URL, NodeID: 2, NodeType: "V2ray"})
+	node, err := client.GetNodeInfo()
+	if err != nil {
+		t.Fatal(err)
 	}
 	inbound, err := InboundBuilder(config, node, "test-reality")
 	if err != nil {
