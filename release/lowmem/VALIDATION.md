@@ -18,11 +18,13 @@ temporary heap allocations, not resident memory saved per active connection.
 
 Verified:
 
-- `CGO_ENABLED=0 go build -p 4 -tags lowmem -trimpath -ldflags='-s -w'`
+- `CGO_ENABLED=0 go build -p 4 -trimpath -ldflags='-s -w'`
 - Limiter and dispatcher tests with the race detector.
 - User list comparison tests, including changed records.
 - Local certificate renewal calculation tests and lowmem provider rejection.
 - Existing V2Ray and Trojan inbound builder tests.
+- VLESS Vision + REALITY inbound configuration and preservation of Vision flow,
+  using an ephemeral generated key without contacting a live panel.
 - Local HTTP response forwarded through the built binary's SOCKS inbound and
   freedom outbound; graceful shutdown via SIGTERM. No panel was used.
 
@@ -32,10 +34,9 @@ Known limitations:
   has no `CypherMethod`. Reproduced using the original controller/limiter code
   through a Go build overlay; unrelated to these changes. The fixture was not
   changed to conceal the failure.
-- The standard build still needs `google.golang.org/api@v0.170.0`, whose
-  artifact redirect to `storage.googleapis.com` is blocked by the cloud network
-  policy. The standard build has not been validated here. Its DNS provider
-  selection continues to delegate to the same lego factory.
+- Only the optimized distribution is now provided. The default build omits
+  the DNS provider SDKs; there is no full/lowmem build selection.
+- Linux arm64 is cross-compiled; execution tests run on Linux amd64 only.
 - External panel and live ACME tests were not run.
 - No Debian VPS access, production traffic test, kernel change, or deployment
   was performed. Throughput, latency and RSS on the target must be measured

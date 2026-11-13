@@ -1,5 +1,7 @@
 # XrayR
 
+**Bản tối ưu cho VPS Debian 12/13 — không cần cài Go:** [Hướng dẫn cài binary có sẵn](release/lowmem/README-vi.md). Nhánh này chỉ phân phối bản tối ưu; phần giới thiệu upstream bên dưới được giữ làm tham khảo.
+
 [![](https://img.shields.io/badge/TgChat-@XrayR讨论-blue.svg)](https://t.me/XrayR_project)
 [![](https://img.shields.io/badge/Channel-@XrayR通知-blue.svg)](https://t.me/XrayR_channel)
 ![](https://img.shields.io/github/stars/XrayR-project/XrayR)
