@@ -63,3 +63,12 @@ Update lowmem.3:
   JSON, create REALITY inbound, fetch/add a fixture user, bind the listener and
   shut down cleanly. Timeouts and the 1024 KiB buffer match the supplied config.
 - External production connectivity and throughput still require VPS validation.
+
+Update lowmem.4:
+- Reproduced the supplied HTML 405 response for POST node status. Tests verify
+  it disables only that optional capability after one request, while subsequent
+  node GETs, traffic uploads and online-IP uploads still execute successfully.
+- GET 405 and POST 400/401/403/500 still return compact errors without response
+  bodies; these responses do not disable status reporting.
+- Host audit/CPUWeight helpers are separate, with mocked priority/restore tests.
+  No remote kernel installation or service cleanup has been performed.

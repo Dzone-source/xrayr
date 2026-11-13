@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -43,6 +45,7 @@ type APIClient struct {
 	access              sync.Mutex
 	version             string
 	eTags               map[string]string
+	statusUnsupported   atomic.Bool
 }
 
 // New create api instance
@@ -146,9 +149,8 @@ func (c *APIClient) parseResponse(res *resty.Response, path string, err error) (
 		return nil, fmt.Errorf("request %s failed: %s", c.assembleURL(path), err)
 	}
 
-	if res.StatusCode() > 400 {
-		body := res.Body()
-		return nil, fmt.Errorf("request %s failed: %s, %v", c.assembleURL(path), string(body), err)
+	if res.StatusCode() >= http.StatusBadRequest {
+		return nil, fmt.Errorf("request %s %s failed: HTTP %d (%s)", res.Request.Method, c.assembleURL(path), res.StatusCode(), http.StatusText(res.StatusCode()))
 	}
 	response := res.Result().(*Response)
 
@@ -273,6 +275,9 @@ func (c *APIClient) GetUserList() (UserList *[]api.UserInfo, err error) {
 
 // ReportNodeStatus reports the node status to the ssPanel
 func (c *APIClient) ReportNodeStatus(nodeStatus *api.NodeStatus) (err error) {
+	if c.statusUnsupported.Load() {
+		return nil
+	}
 	// Determine whether a status report is in need
 	if compareVersion(c.version, "2023.2") == -1 {
 		path := fmt.Sprintf("/mod_mu/nodes/%d/info", c.NodeID)
@@ -286,6 +291,14 @@ func (c *APIClient) ReportNodeStatus(nodeStatus *api.NodeStatus) (err error) {
 			SetResult(&Response{}).
 			ForceContentType("application/json").
 			Post(path)
+		// A capability response from this optional legacy endpoint. Do not
+		// disable node GETs, online-IP reports or traffic accounting.
+		if res != nil && res.StatusCode() == http.StatusMethodNotAllowed {
+			if c.statusUnsupported.CompareAndSwap(false, true) {
+				log.Warn("SSpanel rejects POST node status with HTTP 405; CPU/memory/uptime reports disabled for this client until restart; traffic and online-IP reports remain enabled")
+			}
+			return nil
+		}
 
 		_, err = c.parseResponse(res, path, err)
 		if err != nil {

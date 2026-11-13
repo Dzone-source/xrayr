@@ -1,6 +1,6 @@
 # XrayR tối ưu — cài sẵn cho Debian 12/13
 
-Nhánh này chỉ phân phối **bản tối ưu**, phiên bản `0.9.5-lowmem.3`.
+Nhánh này chỉ phân phối **bản tối ưu**, phiên bản `0.9.5-lowmem.4`.
 Binary Linux `amd64` và `arm64` đã được build bằng Go 1.24.1, nén trong
 [`dist/`](dist/), kèm SHA256. VPS không cần Git, Go hoặc tự biên dịch.
 
@@ -152,3 +152,12 @@ Dữ liệu không hợp lệ vẫn bị từ chối; không tự đoán port ha
 Test khởi động panel giả lập đã dùng đúng kiểu trường của báo cáo chẩn đoán,
 API user giả lập, khoá REALITY sinh tạm và các giá trị timeout/buffer của config
 được cung cấp. Không dùng khóa hoặc phản hồi bí mật của khách hàng trong test.
+
+## Báo CPU/RAM của panel trả HTTP 405 (`lowmem.4`)
+
+Một số fork dùng version `1.0.0` nhưng node-info chỉ nhận GET, không nhận POST
+báo CPU/RAM/uptime theo API legacy. Khi chính POST báo trạng thái nhận HTTP
+405, client ghi một cảnh báo ngắn và ngừng chức năng đó đến lúc restart.
+GET cập nhật node, báo lưu lượng và báo IP online vẫn hoạt động như trước;
+401/403/500 và lỗi ở các endpoint khác vẫn được báo, không bị che đi.
+Lỗi HTTP chỉ ghi method/endpoint/status, không ghi cả trang HTML của panel.
