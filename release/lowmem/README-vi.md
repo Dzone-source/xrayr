@@ -123,3 +123,21 @@ Nếu không có định dạng legacy hợp lệ nhưng có `custom_config` v�
 parser dùng custom config thay vì chỉ dựa vào trường version. Vẫn tôn trọng
 `DisableCustomConfig`; phản hồi thiếu dữ liệu trả lỗi rõ ràng thay vì panic.
 Không ghi toàn bộ node response (có thể chứa private key) vào thông báo lỗi.
+
+## Chẩn đoán định dạng panel khi bản cũ chạy được nhưng bản tối ưu không chạy
+
+Không cài lại nhiều lần khi chưa rõ định dạng API. Giữ dịch vụ cũ đang chạy,
+chỉ đọc cấu trúc node bằng Python 3 (không cần thêm thư viện YAML):
+
+```bash
+curl -fSL https://raw.githubusercontent.com/Dzone-source/xrayr/perf/low-memory-debian/release/lowmem/inspect_panel.py -o /tmp/xrayr-inspect-panel.py
+python3 /tmp/xrayr-inspect-panel.py --config /etc/XrayR/config.yml --node-id 2
+```
+
+Thay `2` bằng NodeID thực tế. Công cụ lấy thông tin API từ một block ApiConfig
+đơn giản trong config hiện có, chỉ gửi GET tới node info. Nó không sửa config,
+không restart dịch vụ, không in ApiKey, private key, hostname hay giá trị chuỗi
+tuỳ ý. Báo cáo giữ tên trường, kiểu dữ liệu, các giá trị port/giao thức đã
+allowlist và số phần của `server`; có thể gửi báo cáo này để sửa parser theo
+phản hồi thực tế. Không gửi file config hoặc JSON phản hồi gốc chứa bí mật.
+Công cụ không đi theo HTTP redirect để tránh chuyển query credential sang host khác.
