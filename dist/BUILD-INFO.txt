@@ -1,44 +1,48 @@
-Version: 0.9.5-debian-dpanel.1
-Source commit: 847ab23d913f89648d3dc3a5c52798b6384266c4
-Target: Linux amd64, CGO_ENABLED=0, Go 1.24.1, statically linked.
-Embedded VCS revision matches source; vcs.modified=false.
+Version: 0.9.5-debian-devices.1
+Source commit: f6f3ba52d86cd43bc000c72254ce7345697e7f2f
+Target: Linux amd64, Go 1.24.1, CGO_ENABLED=0, statically linked, stripped.
 
-Changes:
-- Prefer nonempty custom_config over calendar version inference, respecting DisableCustomConfig.
-- Decode DPanel numeric ports and boolean/numeric flags alongside legacy SSPanel strings.
-- Validate ports and reject truncated legacy server formats without index panics.
-- Disable node-status POST after HTTP 405 for the process; user/traffic reporting is unchanged.
+Features:
+- Separate device credentials retain the real account UID for traffic accounting.
+- Per-node active-stream registry reports devices sharing an IP independently.
+- Revocation closes existing streams and rejects cached authentication.
+- Managed profiles expire their cached permission after max(120, 3*UpdatePeriodic)
+  seconds without successful sync (304 extends it), checked at 5-second intervals.
+- Legacy accounts keep their existing outage policy; manual custom inbounds are not controlled.
+- Revoked profile traffic is retained for final reporting and quiet counters are released.
+- Traffic acknowledgements subtract the reported snapshot without losing bytes arriving during API calls.
 
-Validation:
+Verification:
 - All modules verified against go.sum.
-- SSPanel/DPanel HTTP fixture tests and legacy parser regressions passed, including race detector.
-- Limiter race tests passed.
-- Selected mylego and V2ray/Trojan/Shadowsocks builder tests passed.
-- 13 installer/bootstrap/upgrade fixture tests passed.
-- Binary smoke test against a mock DPanel 1.0.0 response: created local VLESS/REALITY
-  inbound using a synthetic local key, loaded a fixture user, and remained running.
-- HTTP core forwarded 1,245,184 bytes intact; node-status POST 405 was handled once.
-- This is not a VLESS/REALITY client handshake or a WAN throughput measurement.
-- Real user panel, real VPS/kernel update and reboot remain untested here.
+- Registry/limiter/SSPanel/controller tests passed with the race detector.
+- Existing selected TLS helper and inbound builder tests passed.
+- Integration with real VLESS clients and the packaged binary passed: two profiles
+  behind the same IP, selective termination, continued payload transfer on the other
+  profile, full-account termination, and final traffic reporting to the owner.
+- 13 bootstrap/installer/upgrade fixture tests passed; checksums checked.
+- Paired DPanel branch has MariaDB migration/authorization/subscription/presence tests.
+- Not deployed on production web/node; no WAN throughput or real kernel change tested here.
 
-Build output:
+Release build output:
 ...
 ----------------------------------------------------------------------
-Ran 3 tests in 0.020s
+Ran 3 tests in 0.025s
 
 OK
 ....
 ----------------------------------------------------------------------
-Ran 4 tests in 0.099s
+Ran 4 tests in 0.124s
 
 OK
 ......
 ----------------------------------------------------------------------
-Ran 6 tests in 0.185s
+Ran 6 tests in 0.180s
 
 OK
 all modules verified
-ok  	github.com/XrayR-project/XrayR/api/sspanel	0.018s
-ok  	github.com/XrayR-project/XrayR/common/limiter	1.108s
-ok  	github.com/XrayR-project/XrayR/common/mylego	0.106s
-ok  	github.com/XrayR-project/XrayR/service/controller	0.065s
+ok  	github.com/XrayR-project/XrayR/api/sspanel	0.019s
+ok  	github.com/XrayR-project/XrayR/common/devices	1.037s
+ok  	github.com/XrayR-project/XrayR/common/limiter	1.105s
+ok  	github.com/XrayR-project/XrayR/common/mylego	0.069s
+ok  	github.com/XrayR-project/XrayR/service/controller	0.092s
+ok  	github.com/XrayR-project/XrayR/integration	3.165s
