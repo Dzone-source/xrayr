@@ -1,61 +1,44 @@
-Build target: Debian 12/13, Linux amd64 KVM
-Source commit: b08a49f026fae53abdb3be6ad693b12f21248a54
-Toolchain: Go 1.24.1 linux/amd64
-Flags: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 -mod=readonly -trimpath -ldflags="-s -w"
+Version: 0.9.5-debian-dpanel.1
+Source commit: 847ab23d913f89648d3dc3a5c52798b6384266c4
+Target: Linux amd64, CGO_ENABLED=0, Go 1.24.1, statically linked.
+Embedded VCS revision matches source; vcs.modified=false.
+
+Changes:
+- Prefer nonempty custom_config over calendar version inference, respecting DisableCustomConfig.
+- Decode DPanel numeric ports and boolean/numeric flags alongside legacy SSPanel strings.
+- Validate ports and reject truncated legacy server formats without index panics.
+- Disable node-status POST after HTTP 405 for the process; user/traffic reporting is unchanged.
 
 Validation:
-- All downloaded modules verified against go.sum (including Google API module reconstructed from its official Git tag using golang.org/x/mod/zip).
-- common/limiter: race detector and concurrent bucket creation tests passed.
-- common/mylego: Test_merge and Test_needRenewal passed.
-- service/controller: TestBuildV2ray, TestBuildTrojan, TestBuildSS passed.
-- Existing TestBuildSS on main failed because CypherMethod was empty; fixture now supplies aes-128-gcm.
-- Integration suites requiring panel/ACME credentials were not run.
-- Real Debian VPS install, kernel replacement and WAN throughput have not been tested here.
+- All modules verified against go.sum.
+- SSPanel/DPanel HTTP fixture tests and legacy parser regressions passed, including race detector.
+- Limiter race tests passed.
+- Selected mylego and V2ray/Trojan/Shadowsocks builder tests passed.
+- 13 installer/bootstrap/upgrade fixture tests passed.
+- Binary smoke test against a mock DPanel 1.0.0 response: created local VLESS/REALITY
+  inbound using a synthetic local key, loaded a fixture user, and remained running.
+- HTTP core forwarded 1,245,184 bytes intact; node-status POST 405 was handled once.
+- This is not a VLESS/REALITY client handshake or a WAN throughput measurement.
+- Real user panel, real VPS/kernel update and reboot remain untested here.
 
-BenchmarkExistingConnection, three runs (shared build machine; timings are not a WAN speed measurement):
-Main: 400 B/op, 8 allocs/op.
-Optimized: 16 B/op, 1 allocs/op.
+Build output:
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.020s
 
-Raw benchmark results, main:
-goos: linux
-goarch: amd64
-pkg: github.com/XrayR-project/XrayR/common/limiter
-cpu: INTEL(R) XEON(R) PLATINUM 8573C
-BenchmarkExistingConnection-4   	  395875	      3128 ns/op	     400 B/op	       8 allocs/op
-BenchmarkExistingConnection-4   	  609734	      3558 ns/op	     400 B/op	       8 allocs/op
-BenchmarkExistingConnection-4   	  421992	      3221 ns/op	     400 B/op	       8 allocs/op
-PASS
-ok  	github.com/XrayR-project/XrayR/common/limiter	5.811s
+OK
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.099s
 
-Optimized:
-goos: linux
-goarch: amd64
-pkg: github.com/XrayR-project/XrayR/common/limiter
-cpu: INTEL(R) XEON(R) PLATINUM 8573C
-BenchmarkExistingConnection-4   	 1878169	       808.0 ns/op	      16 B/op	       1 allocs/op
-BenchmarkExistingConnection-4   	 1795821	       731.0 ns/op	      16 B/op	       1 allocs/op
-BenchmarkExistingConnection-4   	 1000000	      1011 ns/op	      16 B/op	       1 allocs/op
-PASS
-ok  	github.com/XrayR-project/XrayR/common/limiter	5.416s
+OK
+......
+----------------------------------------------------------------------
+Ran 6 tests in 0.185s
 
-Artifact validation:
-- ELF x86-64, statically linked, stripped; CGO_ENABLED=0, GOAMD64=v1.
-- Embedded VCS revision matches the source commit above; vcs.modified=false.
-- HTTP proxy smoke test: 1,114,112 bytes forwarded intact through XrayR.
-- Archive SHA-256 check passed.
-
-Installer update: fresh install now runs the Debian linux-image-amd64 APT
-installation before writing XrayR files, and aborts on kernel installation failure.
-Old kernels are retained; reboot remains manual. --no-remove forbids APT removals.
-The previously validated XrayR binary is unchanged (source revision above).
-Installer sequencing: 3 mocked tests passed (preflight failure, kernel failure,
-successful ordering). Shell syntax checks passed. Actual Debian kernel package
-installation and reboot were not executed in the build environment.
-
-One-click distribution update:
-- Package now includes release/config assets (geoip/geosite and config examples).
-- Binary remains unchanged, with the original validated source revision above.
-- Installer sequencing tests: 3 passed.
-- One-click fixture tests: 4 passed (archive checksum rejection, binary checksum
-  rejection, install failure preventing startup, verified install/start sequence).
-- Debian APT/kernel and systemd changes are mocked; no real VPS install/reboot tested.
+OK
+all modules verified
+ok  	github.com/XrayR-project/XrayR/api/sspanel	0.018s
+ok  	github.com/XrayR-project/XrayR/common/limiter	1.108s
+ok  	github.com/XrayR-project/XrayR/common/mylego	0.106s
+ok  	github.com/XrayR-project/XrayR/service/controller	0.065s
