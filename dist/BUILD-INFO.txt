@@ -1,0 +1,45 @@
+Build target: Debian 12/13, Linux amd64 KVM
+Source commit: b08a49f026fae53abdb3be6ad693b12f21248a54
+Toolchain: Go 1.24.1 linux/amd64
+Flags: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 -mod=readonly -trimpath -ldflags="-s -w"
+
+Validation:
+- All downloaded modules verified against go.sum (including Google API module reconstructed from its official Git tag using golang.org/x/mod/zip).
+- common/limiter: race detector and concurrent bucket creation tests passed.
+- common/mylego: Test_merge and Test_needRenewal passed.
+- service/controller: TestBuildV2ray, TestBuildTrojan, TestBuildSS passed.
+- Existing TestBuildSS on main failed because CypherMethod was empty; fixture now supplies aes-128-gcm.
+- Integration suites requiring panel/ACME credentials were not run.
+- Real Debian VPS install, kernel replacement and WAN throughput have not been tested here.
+
+BenchmarkExistingConnection, three runs (shared build machine; timings are not a WAN speed measurement):
+Main: 400 B/op, 8 allocs/op.
+Optimized: 16 B/op, 1 allocs/op.
+
+Raw benchmark results, main:
+goos: linux
+goarch: amd64
+pkg: github.com/XrayR-project/XrayR/common/limiter
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkExistingConnection-4   	  395875	      3128 ns/op	     400 B/op	       8 allocs/op
+BenchmarkExistingConnection-4   	  609734	      3558 ns/op	     400 B/op	       8 allocs/op
+BenchmarkExistingConnection-4   	  421992	      3221 ns/op	     400 B/op	       8 allocs/op
+PASS
+ok  	github.com/XrayR-project/XrayR/common/limiter	5.811s
+
+Optimized:
+goos: linux
+goarch: amd64
+pkg: github.com/XrayR-project/XrayR/common/limiter
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkExistingConnection-4   	 1878169	       808.0 ns/op	      16 B/op	       1 allocs/op
+BenchmarkExistingConnection-4   	 1795821	       731.0 ns/op	      16 B/op	       1 allocs/op
+BenchmarkExistingConnection-4   	 1000000	      1011 ns/op	      16 B/op	       1 allocs/op
+PASS
+ok  	github.com/XrayR-project/XrayR/common/limiter	5.416s
+
+Artifact validation:
+- ELF x86-64, statically linked, stripped; CGO_ENABLED=0, GOAMD64=v1.
+- Embedded VCS revision matches the source commit above; vcs.modified=false.
+- HTTP proxy smoke test: 1,114,112 bytes forwarded intact through XrayR.
+- Archive SHA-256 check passed.
