@@ -33,7 +33,11 @@ sha256sum dist/XrayR > dist/XrayR.sha256
 
 Chuyển binary và checksum qua SSH tới VPS; kiểm tra `sha256sum -c XrayR.sha256`. Checksum đi cùng binary phát hiện lỗi truyền; nguồn tin cậy là máy build/SSH của bạn. Binary đóng gói nằm trong `dist/XrayR-debian-linux-amd64.tar.gz`; kiểm tra checksum trước khi cài.
 
-## Cài mới
+## Cài mới — tự cài kernel Debian
+
+`install.sh` mặc định kiểm tra Debian 12/13 amd64 KVM rồi chạy APT để cài/cập nhật `linux-image-amd64` trước khi ghi file XrayR. Cần mạng tới nguồn APT, đủ dung lượng `/boot` và console/recovery của nhà cung cấp. Nếu bước kernel lỗi, bộ cài dừng và chưa ghi file XrayR; APT có thể đã thay đổi một phần trạng thái package, cần xử lý lỗi APT trước khi chạy lại. Nếu đã có kernel mới nhất, APT giữ nguyên; không ép cài kernel khác.
+
+Giữ kernel cũ, không tự reboot. Kernel đang chạy chỉ đổi sau khi bạn reboot thủ công; cấu hình bootloader quyết định kernel được chọn. Bộ cài không tự thay bootloader. Không tự bật BBR; dùng lệnh riêng bên dưới.
 
 Chuẩn bị config thật từ `release/config/config.yml.example`. Không dùng API key mẫu. Chép các file geoip/geosite, DNS, routing và chứng chỉ mà config tham chiếu vào đúng đường dẫn. Bộ cài từ chối ghi đè bản cũ; với VPS đang chạy, cần backup binary, config, unit và xác định tên service trước khi chuyển đổi.
 
@@ -45,12 +49,12 @@ sudo journalctl -u xrayr -n 50 --no-pager
 
 Service dùng `GOMAXPROCS=1` cho 1 vCPU; không ép GOMEMLIMIT/GOGC và không hạ buffer để tiết kiệm RAM. Kiểm tra RSS và CPU dưới tải; nếu vượt 512 MB thì phải giảm số kết nối hoặc tăng RAM, không có thiết lập nào đảm bảo cả thông lượng và RAM cố định dưới mọi tải. Không tự thêm swap, quota CPU hay giới hạn tốc độ mạng.
 
-## BBR và kernel (tùy chọn, chạy thủ công)
+## BBR và cập nhật kernel riêng
 
 ```sh
 sudo bash deploy/debian/network.sh status
 sudo bash deploy/debian/network.sh bbr
-# Chỉ khi cần kernel Debian mới và đã có console/recovery của nhà cung cấp:
+# Cập nhật kernel riêng sau lần cài mới, nếu cần:
 sudo bash deploy/debian/network.sh kernel
 ```
 

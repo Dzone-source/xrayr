@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+python3 deploy/debian/test_install.py
+bash -n deploy/debian/install.sh deploy/debian/network.sh
 export GOFLAGS=-mod=readonly
 : "${GOMAXPROCS:=4}"
 export GOMAXPROCS

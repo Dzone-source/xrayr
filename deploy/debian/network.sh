@@ -21,7 +21,7 @@ case ${1:-status} in
   kernel)
     echo 'Installing official Debian kernel metapackage; keeping old kernels. No automatic reboot.'
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y linux-image-amd64
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-remove linux-image-amd64
     echo 'Review bootloader, free /boot space, and provider console before a manual reboot.'
     ;;
   *) echo "Usage: $0 {status|bbr|kernel}" >&2; exit 1 ;;

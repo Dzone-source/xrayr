@@ -43,3 +43,11 @@ Artifact validation:
 - Embedded VCS revision matches the source commit above; vcs.modified=false.
 - HTTP proxy smoke test: 1,114,112 bytes forwarded intact through XrayR.
 - Archive SHA-256 check passed.
+
+Installer update: fresh install now runs the Debian linux-image-amd64 APT
+installation before writing XrayR files, and aborts on kernel installation failure.
+Old kernels are retained; reboot remains manual. --no-remove forbids APT removals.
+The previously validated XrayR binary is unchanged (source revision above).
+Installer sequencing: 3 mocked tests passed (preflight failure, kernel failure,
+successful ordering). Shell syntax checks passed. Actual Debian kernel package
+installation and reboot were not executed in the build environment.
