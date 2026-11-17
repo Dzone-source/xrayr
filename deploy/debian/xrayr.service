@@ -1,0 +1,18 @@
+[Unit]
+Description=XrayR for a small Debian VPS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/etc/XrayR
+ExecStart=/usr/local/bin/XrayR --config /etc/XrayR/config.yml
+Environment=GOMAXPROCS=1
+# Keep default Go GC behavior and connection buffers for throughput.
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

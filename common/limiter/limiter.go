@@ -179,10 +179,14 @@ func (l *Limiter) GetUserBucket(tag string, email string, ip string) (limiter *r
 		}
 
 		// Local device limit
-		ipMap := new(sync.Map)
-		ipMap.Store(ip, uid)
+		v, exists := inboundInfo.UserOnlineIP.Load(email)
+		if !exists {
+			ipMap := new(sync.Map)
+			ipMap.Store(ip, uid)
+			v, exists = inboundInfo.UserOnlineIP.LoadOrStore(email, ipMap)
+		}
 		// If any device is online
-		if v, ok := inboundInfo.UserOnlineIP.LoadOrStore(email, ipMap); ok {
+		if exists {
 			ipMap := v.(*sync.Map)
 			// If this is a new ip
 			if _, ok := ipMap.LoadOrStore(ip, uid); !ok {
@@ -208,6 +212,9 @@ func (l *Limiter) GetUserBucket(tag string, email string, ip string) (limiter *r
 		// Speed limit
 		limit := determineRate(nodeLimit, userLimit) // Determine the speed limit rate
 		if limit > 0 {
+			if v, ok := inboundInfo.BucketHub.Load(email); ok {
+				return v.(*rate.Limiter), true, false
+			}
 			limiter := rate.NewLimiter(rate.Limit(limit), int(limit)) // Byte/s
 			if v, ok := inboundInfo.BucketHub.LoadOrStore(email, limiter); ok {
 				bucket := v.(*rate.Limiter)
