@@ -98,3 +98,18 @@ func TestDPanelLegacyFallback(t *testing.T) {
 		t.Fatalf("legacy changed: %+v", node)
 	}
 }
+
+func TestDeviceProfilesKeepOwnerAndDistinctCredentials(t *testing.T) {
+	client := New(&api.Config{NodeID: 2, NodeType: "V2ray"})
+	list := []UserResponse{{ID: 7, DeviceID: 1, UUID: "uuid-one", DeviceLimit: 1, AliveIP: 9}, {ID: 7, DeviceID: 2, UUID: "uuid-two"}, {ID: 8, UUID: "legacy"}}
+	users, err := client.ParseUserListResponse(&list)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(*users) != 3 {
+		t.Fatal("IP counts incorrectly removed device credentials")
+	}
+	if (*users)[0].UID != 7 || (*users)[1].UID != 7 || (*users)[0].Email == (*users)[1].Email || (*users)[0].DeviceLimit != 0 || (*users)[2].DeviceID != 0 {
+		t.Fatalf("invalid device mapping: %+v", users)
+	}
+}

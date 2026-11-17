@@ -10,12 +10,14 @@ export GOFLAGS=-mod=readonly
 export GOMAXPROCS
 go mod download
 go mod verify
-go test -p "$GOMAXPROCS" -count=1 -timeout=120s ./api/sspanel -run '^(TestDPanel|TestLegacyV2ray)'
+go test -p "$GOMAXPROCS" -count=1 -timeout=120s ./api/sspanel -run '^(TestDPanel|TestLegacyV2ray|TestDeviceProfiles)'
+go test -p "$GOMAXPROCS" -race -count=1 ./common/devices
 go test -p "$GOMAXPROCS" -race -count=1 -timeout=120s ./common/limiter
 go test -p "$GOMAXPROCS" -count=1 -timeout=120s ./common/mylego -run '^(Test_merge|Test_needRenewal)$'
-go test -p "$GOMAXPROCS" -count=1 -timeout=120s ./service/controller -run '^(TestBuildV2ray|TestBuildTrojan|TestBuildSS)$'
+go test -p "$GOMAXPROCS" -count=1 -timeout=120s ./service/controller -run '^(TestBuildV2ray|TestBuildTrojan|TestBuildSS|TestAcknowledgedTrafficPreservesBytesArrivingDuringReport)$'
 mkdir -p dist/linux-amd64
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -p "$GOMAXPROCS" -trimpath -ldflags='-s -w' -o dist/linux-amd64/XrayR .
+XRAYR_TEST_BINARY="$PWD/dist/linux-amd64/XrayR" go test -count=1 -timeout=60s ./integration
 cp deploy/debian/{install.sh,network.sh,xrayr.service,README.vi.md} dist/linux-amd64/
 mkdir -p dist/linux-amd64/assets
 cp release/config/* dist/linux-amd64/assets/

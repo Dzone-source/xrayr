@@ -148,7 +148,9 @@ func (l *Limiter) GetOnlineDevice(tag string) (*[]api.OnlineUser, error) {
 			ipMap.Range(func(key, value interface{}) bool {
 				uid := value.(int)
 				ip := key.(string)
-				onlineUser = append(onlineUser, api.OnlineUser{UID: uid, IP: ip})
+				if !strings.Contains(email, "|device:") {
+					onlineUser = append(onlineUser, api.OnlineUser{UID: uid, IP: ip})
+				}
 				return true
 			})
 			inboundInfo.UserOnlineIP.Delete(email) // Reset online device
@@ -293,6 +295,18 @@ func determineRate(nodeLimit, userLimit uint64) (limit uint64) {
 			return nodeLimit
 		} else {
 			return nodeLimit
+		}
+	}
+}
+
+// RemoveUsers releases metadata for revoked credentials instead of retaining it until restart.
+func (l *Limiter) RemoveUsers(tag string, emails []string) {
+	if value, ok := l.InboundInfo.Load(tag); ok {
+		in := value.(*InboundInfo)
+		for _, email := range emails {
+			in.UserInfo.Delete(email)
+			in.BucketHub.Delete(email)
+			in.UserOnlineIP.Delete(email)
 		}
 	}
 }

@@ -26,6 +26,7 @@ import (
 	"github.com/xtls/xray-core/transport"
 	"github.com/xtls/xray-core/transport/pipe"
 
+	"github.com/XrayR-project/XrayR/common/devices"
 	"github.com/XrayR-project/XrayR/common/limiter"
 	"github.com/XrayR-project/XrayR/common/rule"
 )
@@ -100,6 +101,7 @@ type DefaultDispatcher struct {
 	dns         dns.Client
 	fdns        dns.FakeDNSEngine
 	Limiter     *limiter.Limiter
+	Devices     *devices.Registry
 	RuleManager *rule.Manager
 }
 
@@ -125,6 +127,7 @@ func (d *DefaultDispatcher) Init(config *Config, om outbound.Manager, router rou
 	d.policy = pm
 	d.stats = sm
 	d.Limiter = limiter.New()
+	d.Devices = devices.New()
 	d.RuleManager = rule.New()
 	d.dns = dns
 	return nil
@@ -141,7 +144,10 @@ func (*DefaultDispatcher) Start() error {
 }
 
 // Close implements common.Closable.
-func (*DefaultDispatcher) Close() error {
+func (d *DefaultDispatcher) Close() error {
+	if d.Devices != nil {
+		d.Devices.Close()
+	}
 	return nil
 }
 
@@ -383,6 +389,19 @@ func sniffer(ctx context.Context, cReader *cachedReader, metadataOnly bool, netw
 }
 
 func (d *DefaultDispatcher) routedDispatch(ctx context.Context, link *transport.Link, destination net.Destination) {
+	in := session.InboundFromContext(ctx)
+	if in != nil && in.User != nil && in.User.Email != "" && d.Devices.Controls(in.Tag) {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		stop := func() { cancel(); common.Interrupt(link.Reader); common.Interrupt(link.Writer) }
+		release, allowed := d.Devices.Begin(in.User.Email, in.Source.Address.IP().String(), stop)
+		if !allowed {
+			stop()
+			return
+		}
+		defer release()
+		defer cancel()
+	}
 	outbounds := session.OutboundsFromContext(ctx)
 	ob := outbounds[len(outbounds)-1]
 	if hosts, ok := d.dns.(dns.HostsLookup); ok && destination.Address.Family().IsDomain() {

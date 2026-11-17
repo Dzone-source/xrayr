@@ -7,7 +7,7 @@ Nhánh này giữ nguyên buffer kết nối, GC mặc định và giới hạn 
 Chạy trên VPS Debian 12/13 amd64 KVM (cần `curl`, quyền sudo/root và console/recovery của nhà cung cấp):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Dzone-source/xrayr/optimize/debian-512mb/deploy/debian/oneclick.sh -o xrayr-oneclick.sh && sudo bash xrayr-oneclick.sh
+curl -fsSL https://raw.githubusercontent.com/Dzone-source/xrayr/feature/device-profiles/deploy/debian/oneclick.sh -o xrayr-oneclick.sh && sudo bash xrayr-oneclick.sh
 ```
 
 Lệnh tự tải gói binary đã build từ một commit cố định, kiểm tra SHA-256 của gói và binary, cài/cập nhật kernel `linux-image-amd64`, cài các file geo/cấu hình mẫu và khởi động dịch vụ XrayR. Không biên dịch trên VPS. Không ghi đè bản XrayR đã có, không tự reboot, không tự bật BBR.
@@ -21,7 +21,7 @@ Sau khi cài, reboot thủ công khi sẵn sàng để nạp kernel mới. Kiể
 Nếu thấy `Existing XrayR found`, không xóa `/etc/XrayR`. Tải lại bootstrap mới và chạy chế độ nâng cấp:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Dzone-source/xrayr/optimize/debian-512mb/deploy/debian/oneclick.sh -o xrayr-oneclick.sh && sudo bash xrayr-oneclick.sh --upgrade
+curl -fsSL https://raw.githubusercontent.com/Dzone-source/xrayr/feature/device-profiles/deploy/debian/oneclick.sh -o xrayr-oneclick.sh && sudo bash xrayr-oneclick.sh --upgrade
 ```
 
 Hỗ trợ service `xrayr.service` hoặc `XrayR.service` với binary ở `/usr/local/bin/XrayR`, `/usr/local/XrayR/XrayR` hoặc `/usr/bin/XrayR`, cấu hình chuẩn trong `/etc/XrayR`. Script đọc service thực tế để chọn binary; nếu phát hiện nhiều service khác nhau hoặc đường dẫn tùy biến, nó dừng trước khi đổi kernel/binary.
@@ -33,8 +33,8 @@ Nếu restart lỗi hoặc service không active sau 3 giây, script thử khôi
 ## Tải bản build sẵn
 
 ```sh
-curl -fLO https://raw.githubusercontent.com/Dzone-source/xrayr/optimize/debian-512mb/dist/XrayR-debian-linux-amd64.tar.gz
-curl -fLO https://raw.githubusercontent.com/Dzone-source/xrayr/optimize/debian-512mb/dist/XrayR-debian-linux-amd64.tar.gz.sha256
+curl -fLO https://raw.githubusercontent.com/Dzone-source/xrayr/feature/device-profiles/dist/XrayR-debian-linux-amd64.tar.gz
+curl -fLO https://raw.githubusercontent.com/Dzone-source/xrayr/feature/device-profiles/dist/XrayR-debian-linux-amd64.tar.gz.sha256
 sha256sum -c XrayR-debian-linux-amd64.tar.gz.sha256
 mkdir -p xrayr-debian
 tar -xzf XrayR-debian-linux-amd64.tar.gz -C xrayr-debian
@@ -99,3 +99,11 @@ So sánh main và nhánh này trên cùng VPS, cùng core/config, endpoint và p
 Bản `0.9.5-debian-dpanel.1` chọn `custom_config` có dữ liệu dù panel dùng phiên bản dạng `1.0.0` thay vì lịch SSPanel. Hỗ trợ port dạng số/chuỗi, cờ VLESS dạng boolean/số/chuỗi; kiểm tra port và cấu trúc legacy trước khi đọc. `DisableCustomConfig: true` vẫn buộc dùng định dạng legacy. REALITY lấy cấu hình local khi `DisableLocalREALITYConfig: false`; không tự sinh hoặc thay private key của node hiện có.
 
 Nếu endpoint báo cáo trạng thái node trả HTTP 405, backend ghi cảnh báo một lần rồi ngừng gửi loại báo cáo này đến khi tiến trình khởi động lại; các báo cáo user/traffic vẫn giữ nguyên. Đây không phải lỗi kernel.
+
+## Profile thiết bị (0.9.5-debian-devices.1)
+
+Cần triển khai nhánh `feature/device-profiles` của DPanel và chạy migration trước khi bật chế độ này cho account. Nâng cấp node trước; account chưa bật vẫn dùng UUID cũ. Node mới gửi khả năng `device_profiles=1`, nhận UUID riêng + `device_id` cho mỗi profile và tính lưu lượng về `user_id` gốc.
+
+Thu hồi một profile hoặc khóa account được thực thi sau lần đồng bộ danh sách user tiếp theo. Node đóng cả luồng đang chạy, không chỉ từ chối kết nối mới. Với profile thiết bị, quyền cache hết hạn sau `max(120, 3 * UpdatePeriodic)` giây nếu không đồng bộ thành công; các phiên bị cắt trong tối đa khoảng 5 giây tiếp theo. Account legacy không áp dụng timeout quyền này. `304 Not Modified` vẫn gia hạn quyền.
+
+Nên đặt `UpdatePeriodic: 30` để thu hồi trong khoảng 30 giây khi web/node liên lạc bình thường. Không gọi web theo từng gói dữ liệu. Trạng thái online dựa trên các luồng còn mở; profile sao chép sang hai máy vẫn cùng một định danh, không phải xác thực phần cứng. DPanel hiển thị trạng thái nhận trong 180 giây gần đây.

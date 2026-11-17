@@ -81,6 +81,7 @@ type NodeInfo struct {
 }
 
 type UserInfo struct {
+	DeviceID    int
 	UID         int
 	Email       string
 	UUID        string
@@ -93,11 +94,14 @@ type UserInfo struct {
 }
 
 type OnlineUser struct {
-	UID int
-	IP  string
+	DeviceID    int
+	Connections int
+	UID         int
+	IP          string
 }
 
 type UserTraffic struct {
+	DeviceID int
 	UID      int
 	Email    string
 	Upload   int64

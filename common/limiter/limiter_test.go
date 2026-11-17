@@ -71,3 +71,22 @@ func TestConcurrentBucketCreation(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestRemoveRevokedCredentialMetadata(t *testing.T) {
+	l := New()
+	users := []api.UserInfo{{UID: 1, Email: "device:1", DeviceID: 1, SpeedLimit: 1000}}
+	if err := l.AddInboundLimiter("node", 0, &users, nil); err != nil {
+		t.Fatal(err)
+	}
+	email := "node|device:1|1"
+	l.GetUserBucket("node", email, "192.0.2.1")
+	l.RemoveUsers("node", []string{email})
+	raw, _ := l.InboundInfo.Load("node")
+	in := raw.(*InboundInfo)
+	if _, ok := in.UserInfo.Load(email); ok {
+		t.Fatal("revoked metadata retained")
+	}
+	if _, ok := in.BucketHub.Load(email); ok {
+		t.Fatal("revoked rate bucket retained")
+	}
+}

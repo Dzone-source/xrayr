@@ -93,6 +93,7 @@ func (c *CustomConfig) UnmarshalJSON(data []byte) error {
 
 // UserResponse is the response of user
 type UserResponse struct {
+	DeviceID    int     `json:"device_id"`
 	ID          int     `json:"id"`
 	Passwd      string  `json:"passwd"`
 	Port        uint32  `json:"port"`
@@ -122,12 +123,15 @@ type SystemLoad struct {
 
 // OnlineUser is the data structure of online user
 type OnlineUser struct {
-	UID int    `json:"user_id"`
-	IP  string `json:"ip"`
+	DeviceID    int    `json:"device_id,omitempty"`
+	Connections int    `json:"connections,omitempty"`
+	UID         int    `json:"user_id"`
+	IP          string `json:"ip"`
 }
 
 // UserTraffic is the data structure of traffic
 type UserTraffic struct {
+	DeviceID int   `json:"device_id,omitempty"`
 	UID      int   `json:"user_id"`
 	Upload   int64 `json:"u"`
 	Download int64 `json:"d"`

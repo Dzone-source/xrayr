@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/xtls/xray-core/common/protocol"
 	"github.com/xtls/xray-core/core"
@@ -83,6 +84,7 @@ func (c *Controller) addUsers(users []*protocol.User, tag string) error {
 }
 
 func (c *Controller) removeUsers(users []string, tag string) error {
+	c.dispatcher.Limiter.RemoveUsers(tag, users)
 	handler, err := c.ibm.GetHandler(context.Background(), tag)
 	if err != nil {
 		return fmt.Errorf("no such inbound tag: %s", err)
@@ -123,12 +125,17 @@ func (c *Controller) getTraffic(email string) (up int64, down int64, upCounter s
 	return up, down, upCounter, downCounter
 }
 
-func (c *Controller) resetTraffic(upCounterList *[]stats.Counter, downCounterList *[]stats.Counter) {
+type trafficCounter struct {
+	counter stats.Counter
+	value   int64
+}
+
+func (c *Controller) resetTraffic(upCounterList *[]trafficCounter, downCounterList *[]trafficCounter) {
 	for _, upCounter := range *upCounterList {
-		upCounter.Set(0)
+		upCounter.counter.Add(-upCounter.value)
 	}
 	for _, downCounter := range *downCounterList {
-		downCounter.Set(0)
+		downCounter.counter.Add(-downCounter.value)
 	}
 }
 
@@ -143,6 +150,7 @@ func (c *Controller) UpdateInboundLimiter(tag string, updatedUserList *[]api.Use
 }
 
 func (c *Controller) DeleteInboundLimiter(tag string) error {
+	c.dispatcher.Devices.Refresh(tag, nil, time.Second)
 	err := c.dispatcher.Limiter.DeleteInboundLimiter(tag)
 	return err
 }
@@ -158,4 +166,13 @@ func (c *Controller) UpdateRule(tag string, newRuleList []api.DetectRule) error 
 
 func (c *Controller) GetDetectResult(tag string) (*[]api.DetectResult, error) {
 	return c.dispatcher.RuleManager.GetDetectResult(tag)
+}
+
+// Only device profiles use expiring authorization; legacy accounts retain their existing behavior.
+func (c *Controller) refreshDeviceProfiles(users *[]api.UserInfo) {
+	ttl := time.Duration(c.config.UpdatePeriodic*3) * time.Second
+	if ttl < 120*time.Second {
+		ttl = 120 * time.Second
+	}
+	c.dispatcher.Devices.Refresh(c.Tag, *users, ttl)
 }

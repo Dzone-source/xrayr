@@ -237,6 +237,7 @@ func (c *APIClient) GetNodeInfo() (nodeInfo *api.NodeInfo, err error) {
 func (c *APIClient) GetUserList() (UserList *[]api.UserInfo, err error) {
 	path := "/mod_mu/users"
 	res, err := c.client.R().
+		SetQueryParam("device_profiles", "1").
 		SetQueryParam("node_id", strconv.Itoa(c.NodeID)).
 		SetHeader("If-None-Match", c.eTags["users"]).
 		SetResult(&Response{}).
@@ -309,7 +310,7 @@ func (c *APIClient) ReportNodeOnlineUsers(onlineUserList *[]api.OnlineUser) erro
 	reportOnline := make(map[int]int)
 	data := make([]OnlineUser, len(*onlineUserList))
 	for i, user := range *onlineUserList {
-		data[i] = OnlineUser{UID: user.UID, IP: user.IP}
+		data[i] = OnlineUser{UID: user.UID, DeviceID: user.DeviceID, Connections: user.Connections, IP: user.IP}
 		reportOnline[user.UID]++ // will start from 1 if key doesn’t exist
 	}
 	c.LastReportOnline = reportOnline // Update LastReportOnline
@@ -318,6 +319,7 @@ func (c *APIClient) ReportNodeOnlineUsers(onlineUserList *[]api.OnlineUser) erro
 	path := "/mod_mu/users/aliveip"
 	res, err := c.client.R().
 		SetQueryParam("node_id", strconv.Itoa(c.NodeID)).
+		SetQueryParam("device_profiles", "1").
 		SetBody(postData).
 		SetResult(&Response{}).
 		ForceContentType("application/json").
@@ -338,6 +340,7 @@ func (c *APIClient) ReportUserTraffic(userTraffic *[]api.UserTraffic) error {
 	for i, traffic := range *userTraffic {
 		data[i] = UserTraffic{
 			UID:      traffic.UID,
+			DeviceID: traffic.DeviceID,
 			Upload:   traffic.Upload,
 			Download: traffic.Download}
 	}
@@ -720,7 +723,7 @@ func (c *APIClient) ParseUserListResponse(userInfoResponse *[]UserResponse) (*[]
 		}
 
 		// If there is still device available, add the user
-		if deviceLimit > 0 && user.AliveIP > 0 {
+		if deviceLimit > 0 && user.AliveIP > 0 && user.DeviceID == 0 {
 			lastOnline := 0
 			if v, ok := c.LastReportOnline[user.ID]; ok {
 				lastOnline = v
@@ -742,7 +745,14 @@ func (c *APIClient) ParseUserListResponse(userInfoResponse *[]UserResponse) (*[]
 		} else {
 			speedLimit = uint64((user.SpeedLimit * 1000000) / 8)
 		}
+		email := ""
+		if user.DeviceID > 0 {
+			email = fmt.Sprintf("device:%d", user.DeviceID)
+			deviceLimit = 0
+		}
 		userList = append(userList, api.UserInfo{
+			DeviceID:    user.DeviceID,
+			Email:       email,
 			UID:         user.ID,
 			UUID:        user.UUID,
 			Passwd:      user.Passwd,

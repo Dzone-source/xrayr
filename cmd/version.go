@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	version  = "0.9.5-debian-dpanel.1"
+	version  = "0.9.5-debian-devices.1"
 	codename = "XrayR"
 	intro    = "A Xray backend that supports many panels"
 )

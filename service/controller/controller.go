@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -28,6 +29,9 @@ type LimitInfo struct {
 }
 
 type Controller struct {
+	stateMu      sync.Mutex
+	retiredUsers map[string]api.UserInfo
+	retiredQuiet map[string]bool
 	server       *core.Instance
 	config       *Config
 	clientInfo   api.ClientInfo
@@ -53,23 +57,25 @@ type periodicTask struct {
 }
 
 // New return a Controller service with default parameters.
-func New(server *core.Instance, api api.API, config *Config, panelType string) *Controller {
+func New(server *core.Instance, client api.API, config *Config, panelType string) *Controller {
 	logger := log.NewEntry(log.StandardLogger()).WithFields(log.Fields{
-		"Host": api.Describe().APIHost,
-		"Type": api.Describe().NodeType,
-		"ID":   api.Describe().NodeID,
+		"Host": client.Describe().APIHost,
+		"Type": client.Describe().NodeType,
+		"ID":   client.Describe().NodeID,
 	})
 	controller := &Controller{
-		server:     server,
-		config:     config,
-		apiClient:  api,
-		panelType:  panelType,
-		ibm:        server.GetFeature(inbound.ManagerType()).(inbound.Manager),
-		obm:        server.GetFeature(outbound.ManagerType()).(outbound.Manager),
-		stm:        server.GetFeature(stats.ManagerType()).(stats.Manager),
-		dispatcher: server.GetFeature(routing.DispatcherType()).(*mydispatcher.DefaultDispatcher),
-		startAt:    time.Now(),
-		logger:     logger,
+		server:       server,
+		retiredUsers: make(map[string]api.UserInfo),
+		retiredQuiet: make(map[string]bool),
+		config:       config,
+		apiClient:    client,
+		panelType:    panelType,
+		ibm:          server.GetFeature(inbound.ManagerType()).(inbound.Manager),
+		obm:          server.GetFeature(outbound.ManagerType()).(outbound.Manager),
+		stm:          server.GetFeature(stats.ManagerType()).(stats.Manager),
+		dispatcher:   server.GetFeature(routing.DispatcherType()).(*mydispatcher.DefaultDispatcher),
+		startAt:      time.Now(),
+		logger:       logger,
 	}
 
 	return controller
@@ -101,6 +107,7 @@ func (c *Controller) Start() error {
 		return err
 	}
 
+	c.refreshDeviceProfiles(userInfo)
 	// sync controller userList
 	c.userList = userInfo
 
@@ -171,6 +178,7 @@ func (c *Controller) Start() error {
 
 // Close implement the Close() function of the service interface
 func (c *Controller) Close() error {
+	c.dispatcher.Devices.Refresh(c.Tag, nil, time.Second)
 	for i := range c.tasks {
 		if c.tasks[i].Periodic != nil {
 			if err := c.tasks[i].Periodic.Close(); err != nil {
@@ -183,6 +191,8 @@ func (c *Controller) Close() error {
 }
 
 func (c *Controller) nodeInfoMonitor() (err error) {
+	c.stateMu.Lock()
+	defer c.stateMu.Unlock()
 	// delay to start
 	if time.Since(c.startAt) < time.Duration(c.config.UpdatePeriodic)*time.Second {
 		return nil
@@ -217,6 +227,21 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		}
 	}
 
+	if usersChanged {
+		retired, _ := compareUserList(c.userList, newUserInfo)
+		for _, u := range retired {
+			if u.DeviceID > 0 {
+				c.retiredUsers[c.buildUserTag(&u)] = u
+			}
+		}
+	}
+	if nodeInfoChanged && !reflect.DeepEqual(c.nodeInfo, newNodeInfo) {
+		for _, u := range *c.userList {
+			if u.DeviceID > 0 {
+				c.retiredUsers[c.buildUserTag(&u)] = u
+			}
+		}
+	}
 	// If nodeInfo changed
 	if nodeInfoChanged {
 		if !reflect.DeepEqual(c.nodeInfo, newNodeInfo) {
@@ -253,6 +278,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		}
 	}
 
+	c.refreshDeviceProfiles(newUserInfo)
 	// Check Rule
 	if !c.config.DisableGetRule {
 		if ruleList, err := c.apiClient.GetNodeRule(); err != nil {
@@ -479,6 +505,8 @@ func limitUser(c *Controller, user api.UserInfo, silentUsers *[]api.UserInfo) {
 }
 
 func (c *Controller) userInfoMonitor() (err error) {
+	c.stateMu.Lock()
+	defer c.stateMu.Unlock()
 	// delay to start
 	if time.Since(c.startAt) < time.Duration(c.config.UpdatePeriodic)*time.Second {
 		return nil
@@ -522,16 +550,30 @@ func (c *Controller) userInfoMonitor() (err error) {
 
 	// Get User traffic
 	var userTraffic []api.UserTraffic
-	var upCounterList []stats.Counter
-	var downCounterList []stats.Counter
+	var upCounterList []trafficCounter
+	var downCounterList []trafficCounter
 	AutoSpeedLimit := int64(c.config.AutoSpeedLimitConfig.Limit)
 	UpdatePeriodic := int64(c.config.UpdatePeriodic)
 	limitedUsers := make([]api.UserInfo, 0)
+	reportUsers := make(map[string]api.UserInfo)
+	for email, user := range c.retiredUsers {
+		reportUsers[email] = user
+	}
 	for _, user := range *c.userList {
-		up, down, upCounter, downCounter := c.getTraffic(c.buildUserTag(&user))
+		email := c.buildUserTag(&user)
+		reportUsers[email] = user
+		delete(c.retiredUsers, email)
+		delete(c.retiredQuiet, email)
+	}
+	for email, user := range reportUsers {
+		_, retired := c.retiredUsers[email]
+		up, down, upCounter, downCounter := c.getTraffic(email)
 		if up > 0 || down > 0 {
+			if retired {
+				c.retiredQuiet[email] = false
+			}
 			// Over speed users
-			if AutoSpeedLimit > 0 {
+			if AutoSpeedLimit > 0 && !retired {
 				if down > AutoSpeedLimit*1000000*UpdatePeriodic/8 || up > AutoSpeedLimit*1000000*UpdatePeriodic/8 {
 					if _, ok := c.limitedUsers[user]; !ok {
 						if c.config.AutoSpeedLimitConfig.WarnTimes == 0 {
@@ -550,18 +592,29 @@ func (c *Controller) userInfoMonitor() (err error) {
 			}
 			userTraffic = append(userTraffic, api.UserTraffic{
 				UID:      user.UID,
+				DeviceID: user.DeviceID,
 				Email:    user.Email,
 				Upload:   up,
 				Download: down})
 
 			if upCounter != nil {
-				upCounterList = append(upCounterList, upCounter)
+				upCounterList = append(upCounterList, trafficCounter{counter: upCounter, value: up})
 			}
 			if downCounter != nil {
-				downCounterList = append(downCounterList, downCounter)
+				downCounterList = append(downCounterList, trafficCounter{counter: downCounter, value: down})
 			}
 		} else {
 			delete(c.warnedUsers, user)
+			if retired {
+				if c.retiredQuiet[email] {
+					c.stm.UnregisterCounter("user>>>" + email + ">>>traffic>>>uplink")
+					c.stm.UnregisterCounter("user>>>" + email + ">>>traffic>>>downlink")
+					delete(c.retiredUsers, email)
+					delete(c.retiredQuiet, email)
+				} else {
+					c.retiredQuiet[email] = true
+				}
+			}
 		}
 	}
 	if len(limitedUsers) > 0 {
@@ -585,7 +638,8 @@ func (c *Controller) userInfoMonitor() (err error) {
 	// Report Online info
 	if onlineDevice, err := c.GetOnlineDevice(c.Tag); err != nil {
 		c.logger.Print(err)
-	} else if len(*onlineDevice) > 0 {
+	} else if len(*onlineDevice) > 0 || c.panelType == "SSpanel" {
+		*onlineDevice = append(*onlineDevice, c.dispatcher.Devices.Snapshot(c.Tag)...)
 		if err = c.apiClient.ReportNodeOnlineUsers(onlineDevice); err != nil {
 			c.logger.Print(err)
 		} else {
