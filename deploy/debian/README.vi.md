@@ -2,6 +2,20 @@
 
 Nhánh này giữ nguyên buffer kết nối, GC mặc định và giới hạn tốc độ của node/user. Không thể cam kết tốc độ tối đa trên VPS 1 CPU/512 MB nếu chưa đo với giao thức, mã hóa, số kết nối và đường truyền thực tế. BBR chỉ tác động TCP; không tăng băng thông thuê của VPS hay trực tiếp tăng tốc UDP/QUIC.
 
+## One-click: bản build sẵn + kernel Debian
+
+Chạy trên VPS Debian 12/13 amd64 KVM (cần `curl`, quyền sudo/root và console/recovery của nhà cung cấp):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Dzone-source/xrayr/optimize/debian-512mb/deploy/debian/oneclick.sh -o xrayr-oneclick.sh && sudo bash xrayr-oneclick.sh
+```
+
+Lệnh tự tải gói binary đã build từ một commit cố định, kiểm tra SHA-256 của gói và binary, cài/cập nhật kernel `linux-image-amd64`, cài các file geo/cấu hình mẫu và khởi động dịch vụ XrayR. Không biên dịch trên VPS. Không ghi đè bản XrayR đã có, không tự reboot, không tự bật BBR.
+
+Mặc định `/etc/XrayR/config.yml` có `Nodes: []`: dịch vụ chạy nhưng **chưa phục vụ node proxy**. Điền panel/API key/node thật theo `/etc/XrayR/config.yml.example`, rồi chạy `sudo systemctl restart xrayr`. Không gửi API key trong lệnh hoặc chat. Nếu đã chuẩn bị config thật từ trước, dùng `sudo bash xrayr-oneclick.sh /path/to/config.yml`; kiểm tra các đường dẫn file mà config tham chiếu.
+
+Sau khi cài, reboot thủ công khi sẵn sàng để nạp kernel mới. Kiểm tra `uname -r`, `systemctl status xrayr` và `journalctl -u xrayr -n 50 --no-pager`. Cài kernel mới không đảm bảo tăng tốc mạng.
+
 ## Tải bản build sẵn
 
 ```sh

@@ -21,6 +21,11 @@ main() {
   install -d -m 0700 /etc/XrayR
   install -m 0600 "$2" /etc/XrayR/config.yml
   install -m 0644 "$script_dir/xrayr.service" /etc/systemd/system/xrayr.service
+  if [[ -d $script_dir/assets ]]; then
+    for asset in "$script_dir"/assets/*; do
+      install -m 0600 "$asset" "/etc/XrayR/$(basename -- "$asset")"
+    done
+  fi
   systemctl daemon-reload
   echo 'Installed, not started. Install any referenced geo/routing/TLS files, then run: systemctl enable --now xrayr'
   echo 'Debian kernel package installed/updated. The running kernel changes only after a manual reboot; keep provider console access and check uname -r afterwards.'

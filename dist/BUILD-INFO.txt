@@ -51,3 +51,11 @@ The previously validated XrayR binary is unchanged (source revision above).
 Installer sequencing: 3 mocked tests passed (preflight failure, kernel failure,
 successful ordering). Shell syntax checks passed. Actual Debian kernel package
 installation and reboot were not executed in the build environment.
+
+One-click distribution update:
+- Package now includes release/config assets (geoip/geosite and config examples).
+- Binary remains unchanged, with the original validated source revision above.
+- Installer sequencing tests: 3 passed.
+- One-click fixture tests: 4 passed (archive checksum rejection, binary checksum
+  rejection, install failure preventing startup, verified install/start sequence).
+- Debian APT/kernel and systemd changes are mocked; no real VPS install/reboot tested.
