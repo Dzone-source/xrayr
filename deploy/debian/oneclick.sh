@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # This bootstrap pins the bundle to an immutable Git commit.
 set -euo pipefail
-BUNDLE_REF=216c3e351bd2b3f30133ab2104f708c03d4fbd33
+BUNDLE_REF=61e59352a29d82f59afa9e54a3fb2bb3cba7374f
 MODE=install
 BACKUP_ROOT=/var/backups/XrayR
 CONFIG_ROOT=/etc/XrayR
