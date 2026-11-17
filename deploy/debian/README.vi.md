@@ -16,6 +16,20 @@ Mặc định `/etc/XrayR/config.yml` có `Nodes: []`: dịch vụ chạy nhưng
 
 Sau khi cài, reboot thủ công khi sẵn sàng để nạp kernel mới. Kiểm tra `uname -r`, `systemctl status xrayr` và `journalctl -u xrayr -n 50 --no-pager`. Cài kernel mới không đảm bảo tăng tốc mạng.
 
+## Máy đã có XrayR: nâng cấp giữ cấu hình
+
+Nếu thấy `Existing XrayR found`, không xóa `/etc/XrayR`. Tải lại bootstrap mới và chạy chế độ nâng cấp:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Dzone-source/xrayr/optimize/debian-512mb/deploy/debian/oneclick.sh -o xrayr-oneclick.sh && sudo bash xrayr-oneclick.sh --upgrade
+```
+
+Hỗ trợ service `xrayr.service` hoặc `XrayR.service` với binary ở `/usr/local/bin/XrayR`, `/usr/local/XrayR/XrayR` hoặc `/usr/bin/XrayR`, cấu hình chuẩn trong `/etc/XrayR`. Script đọc service thực tế để chọn binary; nếu phát hiện nhiều service khác nhau hoặc đường dẫn tùy biến, nó dừng trước khi đổi kernel/binary.
+
+Bản sao lưu binary, thư mục cấu hình và unit được lưu tại `/var/backups/XrayR/upgrade-*` (chỉ root truy cập). Sau đó script cập nhật kernel, thay binary bằng rename nguyên tử và restart service đang chạy. Không đổi API key/node, geo assets, unit hoặc trạng thái enable/disable. Service vốn dừng sẽ tiếp tục dừng. Restart làm ngắt các kết nối đang có; nên chạy lúc ít người dùng.
+
+Nếu restart lỗi hoặc service không active sau 3 giây, script thử khôi phục binary cũ và restart lại; backup được giữ để xử lý thủ công nếu khôi phục cũng lỗi. Đây là kiểm tra trạng thái service, không chứng minh các node truyền tải thành công; cần kiểm tra journal và lưu lượng thực sau nâng cấp. Không hoàn tác kernel APT và không tự reboot.
+
 ## Tải bản build sẵn
 
 ```sh

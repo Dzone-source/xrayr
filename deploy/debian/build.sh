@@ -3,6 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 python3 deploy/debian/test_install.py
 python3 deploy/debian/test_oneclick.py
+python3 deploy/debian/test_upgrade.py
 bash -n deploy/debian/install.sh deploy/debian/network.sh deploy/debian/oneclick.sh
 export GOFLAGS=-mod=readonly
 : "${GOMAXPROCS:=4}"
