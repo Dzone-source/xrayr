@@ -418,6 +418,9 @@ func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (
 	}
 	// nodeInfo.RawServerString = strings.ToLower(nodeInfo.RawServerString)
 	serverConf := strings.Split(nodeInfoResponse.RawServerString, ";")
+	if len(serverConf) < 6 {
+		return nil, fmt.Errorf("invalid SSPanel legacy V2ray server format: expected at least 6 semicolon-separated fields, got %d; check panel API compatibility", len(serverConf))
+	}
 
 	parsedPort, err := strconv.ParseInt(serverConf[1], 10, 32)
 	if err != nil {
@@ -445,10 +448,13 @@ func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (
 	extraServerConf := strings.Split(serverConf[5], "|")
 	serviceName = ""
 	for _, item := range extraServerConf {
-		conf := strings.Split(item, "=")
+		conf := strings.SplitN(item, "=", 2)
 		key := conf[0]
 		if key == "" {
 			continue
+		}
+		if len(conf) != 2 {
+			return nil, fmt.Errorf("invalid SSPanel legacy V2ray option: expected key=value")
 		}
 		value := conf[1]
 		switch key {

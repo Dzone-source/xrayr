@@ -10,6 +10,7 @@ export GOFLAGS=-mod=readonly
 export GOMAXPROCS
 go mod download
 go mod verify
+go test -p "$GOMAXPROCS" -count=1 -timeout=120s ./api/sspanel -run '^TestLegacyV2ray'
 go test -p "$GOMAXPROCS" -race -count=1 -timeout=120s ./common/limiter
 go test -p "$GOMAXPROCS" -count=1 -timeout=120s ./common/mylego -run '^(Test_merge|Test_needRenewal)$'
 go test -p "$GOMAXPROCS" -count=1 -timeout=120s ./service/controller -run '^(TestBuildV2ray|TestBuildTrojan|TestBuildSS)$'
