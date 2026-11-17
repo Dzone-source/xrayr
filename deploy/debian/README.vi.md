@@ -93,3 +93,9 @@ BBR được ghi vào `/etc/sysctl.d/90-xrayr-bbr.conf`; script từ chối ghi 
 ## Xác minh tốc độ trước khi triển khai
 
 So sánh main và nhánh này trên cùng VPS, cùng core/config, endpoint và payload. Dùng client thực qua proxy, đo download/upload, CPU, RSS, lỗi và độ trễ ở 1/10/50 kết nối; lặp ít nhất 5 lần. Đo TCP và UDP riêng. `iperf3` trực tiếp chỉ đo đường truyền nền, không thay thế phép đo qua XrayR. Benchmark limiter chỉ đo cấp phát trong Go, không chứng minh thông lượng mạng. Chỉ chuyển service thật sau khi build, test và phép đo qua proxy đạt yêu cầu.
+
+## Tương thích DPanel
+
+Bản `0.9.5-debian-dpanel.1` chọn `custom_config` có dữ liệu dù panel dùng phiên bản dạng `1.0.0` thay vì lịch SSPanel. Hỗ trợ port dạng số/chuỗi, cờ VLESS dạng boolean/số/chuỗi; kiểm tra port và cấu trúc legacy trước khi đọc. `DisableCustomConfig: true` vẫn buộc dùng định dạng legacy. REALITY lấy cấu hình local khi `DisableLocalREALITYConfig: false`; không tự sinh hoặc thay private key của node hiện có.
+
+Nếu endpoint báo cáo trạng thái node trả HTTP 405, backend ghi cảnh báo một lần rồi ngừng gửi loại báo cáo này đến khi tiến trình khởi động lại; các báo cáo user/traffic vẫn giữ nguyên. Đây không phải lỗi kernel.

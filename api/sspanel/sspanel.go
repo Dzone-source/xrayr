@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -28,21 +29,22 @@ var (
 
 // APIClient create a api client to the panel.
 type APIClient struct {
-	client              *resty.Client
-	APIHost             string
-	NodeID              int
-	Key                 string
-	NodeType            string
-	EnableVless         bool
-	VlessFlow           string
-	SpeedLimit          float64
-	DeviceLimit         int
-	DisableCustomConfig bool
-	LocalRuleList       []api.DetectRule
-	LastReportOnline    map[int]int
-	access              sync.Mutex
-	version             string
-	eTags               map[string]string
+	client                *resty.Client
+	APIHost               string
+	NodeID                int
+	Key                   string
+	NodeType              string
+	EnableVless           bool
+	VlessFlow             string
+	SpeedLimit            float64
+	DeviceLimit           int
+	DisableCustomConfig   bool
+	LocalRuleList         []api.DetectRule
+	LastReportOnline      map[int]int
+	access                sync.Mutex
+	version               string
+	nodeStatusUnsupported atomic.Bool
+	eTags                 map[string]string
 }
 
 // New create api instance
@@ -194,7 +196,11 @@ func (c *APIClient) GetNodeInfo() (nodeInfo *api.NodeInfo, err error) {
 		isExpired = true
 	}
 
-	if c.DisableCustomConfig || isExpired {
+	// Compatible panels may use semantic versions (e.g. 1.0.0), not SSPanel dates.
+	// Prefer an explicitly supplied custom config unless disabled by the operator.
+	custom := strings.TrimSpace(string(nodeInfoResponse.CustomConfig))
+	hasCustomConfig := custom != "" && custom != "null" && custom != "{}"
+	if c.DisableCustomConfig || (isExpired && !hasCustomConfig) {
 		if isExpired {
 			log.Print("The panel version is expired, it is recommended to update immediately")
 		}
@@ -265,6 +271,9 @@ func (c *APIClient) GetUserList() (UserList *[]api.UserInfo, err error) {
 
 // ReportNodeStatus reports the node status to the ssPanel
 func (c *APIClient) ReportNodeStatus(nodeStatus *api.NodeStatus) (err error) {
+	if c.nodeStatusUnsupported.Load() {
+		return nil
+	}
 	// Determine whether a status report is in need
 	if compareVersion(c.version, "2023.2") == -1 {
 		path := fmt.Sprintf("/mod_mu/nodes/%d/info", c.NodeID)
@@ -279,6 +288,11 @@ func (c *APIClient) ReportNodeStatus(nodeStatus *api.NodeStatus) (err error) {
 			ForceContentType("application/json").
 			Post(path)
 
+		if err == nil && res != nil && res.StatusCode() == 405 {
+			c.nodeStatusUnsupported.Store(true)
+			log.Print("Panel does not support node status POST (HTTP 405); disabling node status reports for this process")
+			return nil
+		}
 		_, err = c.parseResponse(res, path, err)
 		if err != nil {
 			return err
@@ -769,11 +783,14 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 		speedLimit = uint64((nodeInfoResponse.SpeedLimit * 1000000) / 8)
 	}
 
-	parsedPort, err := strconv.ParseInt(nodeConfig.OffsetPortNode, 10, 32)
+	parsedPort, err := strconv.ParseUint(nodeConfig.OffsetPortNode, 10, 16)
 	if err != nil {
 		return nil, err
 	}
 
+	if parsedPort == 0 {
+		return nil, errors.New("custom_config.offset_port_node must be between 1 and 65535")
+	}
 	port := uint32(parsedPort)
 
 	switch c.NodeType {
@@ -787,7 +804,7 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 			enableTLS = true
 		}
 
-		if nodeConfig.EnableVless == "1" {
+		if nodeConfig.EnableVless == "1" || nodeConfig.EnableVless == "true" {
 			enableVless = true
 		}
 	case "Trojan":

@@ -1,6 +1,9 @@
 package sspanel
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // NodeInfoResponse is the response of node
 type NodeInfoResponse struct {
@@ -33,6 +36,59 @@ type CustomConfig struct {
 	Flow           string          `json:"flow"`
 	EnableREALITY  bool            `json:"enable_reality"`
 	RealityOpts    *REALITYConfig  `json:"reality-opts"`
+}
+
+// UnmarshalJSON accepts scalar representations used by SSPanel-compatible panels.
+// Calendar-version SSPanel uses strings; DPanel also sends numbers and booleans.
+func (c *CustomConfig) UnmarshalJSON(data []byte) error {
+	type plain CustomConfig
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	for _, name := range []string{"offset_port_node", "enable_vless", "allow_insecure", "enable_xtls", "tls"} {
+		raw, ok := fields[name]
+		if !ok || string(raw) == "null" {
+			continue
+		}
+		var text string
+		if json.Unmarshal(raw, &text) == nil {
+			continue
+		}
+		var value any
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return err
+		}
+		switch v := value.(type) {
+		case bool:
+			if name == "offset_port_node" {
+				return fmt.Errorf("custom_config.%s must be an integer or string", name)
+			}
+			if v {
+				text = "1"
+			} else {
+				text = "0"
+			}
+		case float64:
+			if v != float64(int64(v)) {
+				return fmt.Errorf("custom_config.%s must be integral", name)
+			}
+			text = fmt.Sprintf("%.0f", v)
+		default:
+			return fmt.Errorf("custom_config.%s has an invalid scalar type", name)
+		}
+		fields[name], _ = json.Marshal(text)
+	}
+	normalized, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	var result plain
+	if err := json.Unmarshal(normalized, &result); err != nil {
+		return err
+	}
+	*c = CustomConfig(result)
+	return nil
 }
 
 // UserResponse is the response of user
